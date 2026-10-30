@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About c2vector — Free Image to Vector &amp; SVG Deterministic Converter</title>
+  <meta name="description" content="Discover how c2vector converts raster images, logos, and photos into scalable SVG vector graphics locally in your browser. 100% private, zero cloud telemetry, 0% Generative AI (pure mathematical algorithms).">
+  <meta name="keywords" content="Image to Vector, Image to SVG, Convert image to vector, Free SVG converter, Logo vectorizer, deterministic vectorizer, SVG converter without AI, offline vectorizer, Potrace, Canny edge detection">
+  <meta name="author" content="Deekshith Vodela">
+  <link rel="canonical" href="https://deekshithvodela.github.io/c2vector/about/">
+
+  <!-- Favicon Suite (Google Search Central Multi-of-48px Compliant) -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="48x48" href="assets/icons/favicon-48x48.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="assets/icons/favicon-96x96.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/favicon-192x192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#0b0d10" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+  <meta name="google-site-verification" content="googleb30f9215a6887c17">
+
+  <!-- Typography Preconnect & High-Performance Web Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+
+  <!-- GoatCounter Privacy-First Analytics -->
+  <script data-goatcounter="https://c2vector.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
+
+  <!-- Anti-Flash Theme Script (Canonify Pattern) -->
+  <script>
+    (function() {
+      try {
+        const savedTheme = localStorage.getItem('c2vector-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        if (savedTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch {}
+    })();
+  </script>
+
+  <!-- OpenGraph Metadata -->
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://deekshithvodela.github.io/c2vector/about/">
+  <meta property="og:title" content="About C2Vector — Deterministic In-Browser Vectorization">
+  <meta property="og:description" content="Convert images, logos, and graphics to scalable SVG vectors and master print-ready PDF suites locally in your browser. 100% private with 0% Generative AI.">
+  <meta property="og:image" content="https://deekshithvodela.github.io/c2vector/assets/og/og-image.jpg">
+  <meta property="og:image:secure_url" content="https://deekshithvodela.github.io/c2vector/assets/og/og-image.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="About C2Vector Studio and Deterministic Vectorization Architecture">
+  <meta property="og:image" content="https://deekshithvodela.github.io/c2vector/assets/og/og-square.jpg">
+  <meta property="og:image:secure_url" content="https://deekshithvodela.github.io/c2vector/assets/og/og-square.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="600">
+  <meta property="og:image:height" content="600">
+  <meta property="og:image:alt" content="C2Vector App Icon">
+  <meta property="og:site_name" content="C2Vector">
+
+  <!-- Twitter Card Metadata -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://deekshithvodela.github.io/c2vector/about/">
+  <meta name="twitter:title" content="About C2Vector — In-Browser Vectorization">
+  <meta name="twitter:description" content="Convert photos, logos, and graphics into production-grade scalable SVG vector graphics locally in your browser. 100% private with 0% Generative AI.">
+  <meta name="twitter:image" content="https://deekshithvodela.github.io/c2vector/assets/og/og-image.jpg">
+
+  <!-- Schema.org JSON-LD Structured Data: AboutPage & FAQPage -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "AboutPage",
+        "@id": "https://deekshithvodela.github.io/c2vector/about/",
+        "url": "https://deekshithvodela.github.io/c2vector/about/",
+        "name": "About C2Vector — Free Image to Vector & SVG Deterministic Converter",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://deekshithvodela.github.io/c2vector/#website",
+          "name": "C2Vector",
+          "url": "https://deekshithvodela.github.io/c2vector/"
+        },
+        "image": [
+          "https://deekshithvodela.github.io/c2vector/assets/og/og-square.jpg",
+          "https://deekshithvodela.github.io/c2vector/assets/og/og-search.jpg",
+          "https://deekshithvodela.github.io/c2vector/assets/og/og-discover.jpg"
+        ],
+        "description": "C2Vector is a free, 100% client-side vector synthesis application that converts raster images (PNG, JPG, WebP, AVIF) into mathematically rigorous, infinitely scalable SVG vectors and vector PDFs with 0% Generative AI.",
+        "inLanguage": "en-US",
+        "creator": {
+          "@type": "Person",
+          "name": "Deekshith Vodela",
+          "url": "https://www.linkedin.com/in/deekshithvodela/"
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://deekshithvodela.github.io/c2vector/about/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "How do I convert an image to SVG without losing quality?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "c2vector converts raster images (PNG, JPEG, WebP, AVIF) into vector SVG files by tracing exact pixel contours using continuous cubic Bézier splines and corner-preserving Potrace algorithms. Transparent backgrounds are knocked out automatically, and spot colors are preserved with zero quality degradation at any resolution."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does c2vector use generative AI or machine learning models?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. c2vector guarantees 0% Generative AI. We do not use AI at all to convert your files. Every vector curve, color plate, and edge is calculated using 100% deterministic mathematical algorithms—sub-pixel Canny edge gradients, Otsu variance minimization, CIELAB color space quantization, and Schneider-Ramer-Peucker spline fitting executing purely in your local browser."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Are my uploaded photos or company logos private and secure?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, 100%. All processing runs locally inside your browser's Web Workers. Your files are never uploaded to any remote server, cloud storage bucket, or third-party API. When you close the tab, all in-memory buffers are immediately cleared."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How does the dedicated Logo & Typography engine preserve 90-degree corners?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The dedicated Logo Engine bypasses bilateral blurring to preserve raw pixel edges, groups anti-aliased transition pixels into true dominant spot colors, and configures the curve fitting engine with strict straight-line tolerance (optTolerance: 0.08) and corner preservation (alphaMax: 0.15) to maintain sharp 90-degree angles and tiny punctuation marks."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use the exported SVG vectors for commercial CNC, vinyl cutting, and silk screen printing?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. c2vector generates clean, standard W3C SVG 1.1 files with explicit viewBox coordinates, closed paths, and separate tonal plates specifically structured for laser cutting, vinyl sign plotting, silk screen stencil printing, embroidery, and CAD fabrication."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Why is deterministic mathematical vectorization superior to AI vectorizers?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Generative AI vectorizers hallucinate unexpected artifacts, warp straight geometry into wavy noodles, and add phantom lines. Deterministic mathematical vectorization produces exact, reproducible, and mathematically provable geometric boundaries that respect the original image."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <style>
+    /* Dedicated About Page Styles */
+    .about-main {
+      max-width: 1040px;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 4rem 1.25rem;
+      overflow-x: hidden;
+    }
+    .about-hero {
+      text-align: center;
+      margin-bottom: 3.5rem;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .about-hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      border-radius: var(--radius-full);
+      background: var(--accent-gold-subtle);
+      border: 1px solid rgba(244, 186, 0, 0.35);
+      color: var(--accent-gold);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 1.25rem;
+      max-width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+      word-break: break-word;
+    }
+    .about-hero-pill span {
+      white-space: normal;
+    }
+    .about-hero h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+    .about-hero h1 span {
+      background: var(--gold-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .about-hero p {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 720px;
+      margin: 0 auto 2rem auto;
+      line-height: 1.6;
+    }
+    .about-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem;
+      margin-bottom: 2.5rem;
+      box-shadow: var(--shadow-card);
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
+    }
+    .about-section h2 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .about-section h2 svg {
+      color: var(--accent-gold);
+      flex-shrink: 0;
+    }
+    .about-lead {
+      font-size: 1.05rem;
+      line-height: 1.7;
+      color: var(--text-muted);
+      margin-bottom: 1.75rem;
+    }
+    .about-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+    }
+    @media (min-width: 768px) {
+      .about-grid-2 {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    .about-card-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      transition: var(--transition);
+    }
+    .about-card-item:hover {
+      border-color: rgba(244, 186, 0, 0.4);
+      transform: translateY(-2px);
+    }
+    .about-card-item h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .about-card-item p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    /* Comparison Matrix Table */
+    .comparison-table-wrapper {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-top: 1.5rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-card);
+      box-sizing: border-box;
+    }
+    .comparison-table {
+      min-width: 520px;
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+    .comparison-table th,
+    .comparison-table td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .comparison-table th {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .comparison-table tr:last-child td {
+      border-bottom: none;
+    }
+    .comparison-table td.highlight {
+      background: rgba(244, 186, 0, 0.06);
+      font-weight: 600;
+      color: var(--accent-gold);
+    }
+    .table-check {
+      color: #10b981;
+      font-weight: 700;
+    }
+    .table-cross {
+      color: #ef4444;
+      font-weight: 700;
+    }
+
+    /* FAQ Accordion Styling */
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .faq-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: var(--transition);
+    }
+    .faq-item[open] {
+      border-color: rgba(244, 186, 0, 0.45);
+    }
+    .faq-question {
+      padding: 1.1rem 1.4rem;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      list-style: none;
+    }
+    .faq-question::-webkit-details-marker {
+      display: none;
+    }
+    .faq-question::after {
+      content: '+';
+      font-size: 1.4rem;
+      font-weight: 400;
+      color: var(--accent-gold);
+      transition: transform 0.2s ease;
+    }
+    .faq-item[open] .faq-question::after {
+      content: '−';
+    }
+    .faq-answer {
+      padding: 0 1.4rem 1.25rem 1.4rem;
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    /* Final CTA */
+    .about-cta {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      background: var(--bg-card);
+      border: 1px solid rgba(244, 186, 0, 0.35);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 8px 32px rgba(244, 186, 0, 0.08);
+      margin-top: 3rem;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .about-cta h2 {
+      justify-content: center;
+      font-size: 2rem;
+      margin-bottom: 0.75rem;
+    }
+    .about-cta p {
+      max-width: 580px;
+      margin: 0 auto 1.75rem auto;
+      color: var(--text-muted);
+      font-size: 1.05rem;
+    }
+
+    /* Responsive Breakpoints & Horizontal Overflow Protection */
+    @media (max-width: 640px) {
+      .about-main {
+        padding: 1.5rem 1rem 3rem 1rem;
+      }
+      .about-section {
+        padding: 1.5rem 1rem;
+        margin-bottom: 1.5rem;
+      }
+      .about-hero h1 {
+        font-size: 1.85rem;
+      }
+      .about-cta h2 {
+        font-size: 1.5rem;
+      }
+      .about-cta {
+        padding: 2rem 1rem;
+      }
+    }
+    @media (max-width: 400px) {
+      .about-hero-pill {
+        font-size: 0.68rem;
+        padding: 4px 8px;
+        letter-spacing: 0.01em;
+      }
+      .about-hero h1 {
+        font-size: 1.65rem;
+      }
+      .about-section h2 {
+        font-size: 1.35rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Accessibility: Skip Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Header & Navigation (Two-Bar Layout) -->
+  <header class="app-header" role="banner">
+    <div class="header-container">
+      <div class="header-top-bar">
+        <a href="./" class="brand" aria-label="c2vector Homepage">
+          <!-- Refined Brand Logo: Authentic Fountain Pen Nib Drawing Cubic Bézier Curve -->
+          <div class="brand-logo" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M 2 17 C 5 9, 10 9, 13 13 C 15 15.5, 18 16, 22 11" stroke="#f4ba00" stroke-width="2" stroke-linecap="round"/>
+              <line x1="6" y1="9.5" x2="14" y2="9.5" stroke="#fedd3d" stroke-width="1.2" stroke-dasharray="1.5 1.5" opacity="0.9"/>
+              <circle cx="6" cy="9.5" r="1.3" fill="#fbd32c"/>
+              <circle cx="14" cy="9.5" r="1.3" fill="#fbd32c"/>
+              <g transform="translate(13, 13) scale(0.36) rotate(-100) translate(-25.332, -19.578)" fill="#f4ba00" fill-rule="evenodd">
+                <path d="M 25.332 19.578 C 24.655 21.341, 29.433 40.612, 31.022 42.526 C 31.581 43.200, 33.738 44.022, 35.816 44.355 C 38.441 44.774, 40.275 45.880, 41.827 47.979 C 43.055 49.641, 44.849 51, 45.814 51 C 47.682 51, 58 41.161, 58 39.379 C 58 38.797, 56.490 36.948, 54.645 35.268 C 52.301 33.136, 51.093 30.985, 50.637 28.133 C 50.002 24.161, 49.831 24.008, 44.242 22.436 C 41.084 21.548, 36.281 20.186, 33.568 19.410 C 27.286 17.614, 26.076 17.638, 25.332 19.578 M 34.500 26 C 36.343 27.924, 38.371 29, 40.152 29 C 43.750 29, 45.678 32.216, 44.124 35.626 C 43.412 37.190, 42.202 38, 40.578 38 C 37.977 38, 34.835 34.595, 35.599 32.604 C 35.845 31.962, 34.393 29.876, 32.373 27.969 C 29.930 25.662, 28.923 25.129, 29.368 26.379 C 29.735 27.412, 30.543 30.337, 31.162 32.879 C 32.904 40.025, 33.576 40.814, 38.569 41.563 C 42.697 42.182, 43.419 41.973, 46.131 39.375 C 48.703 36.911, 49.041 36.004, 48.511 33.001 C 47.360 26.480, 47.177 26.288, 40.513 24.614 C 31.754 22.413, 31.189 22.544, 34.500 26 M 39 33.500 C 39 34.417, 39.484 35.005, 40.075 34.808 C 40.666 34.611, 41.150 34.023, 41.150 33.500 C 41.150 32.977, 40.666 32.389, 40.075 32.192 C 39.484 31.995, 39 32.583, 39 33.500 M 47.699 41.796 C 44.803 44.762, 44.256 45.856, 45.200 46.800 C 46.144 47.744, 47.238 47.197, 50.204 44.301 C 54.054 40.542, 55.062 38, 52.703 38 C 51.990 38, 49.738 39.708, 47.699 41.796" />
+              </g>
+            </svg>
+          </div>
+          <span class="brand-title">C2Vector</span>
+        </a>
+
+        <div class="header-utilities">
+          <!-- Dark/Light Mode Theme Toggle Button -->
+          <button id="btnThemeToggle" class="theme-toggle-btn" type="button" aria-label="Switch to Light Mode" title="Toggle Dark/Light Mode">
+            <svg id="themeIconSun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <svg id="themeIconMoon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </button>
+
+          <a href="https://github.com/deekshithvodela/c2vector" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" aria-label="View source repository on GitHub">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            <span class="github-label">GitHub</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Segmented Sub-Bar Navigation -->
+      <nav class="header-nav-bar" aria-label="Primary navigation">
+        <a href="./" class="nav-link" aria-label="Vector Studio">Studio</a>
+        <a href="workflow/" class="nav-link" aria-label="Architecture and Pipeline Documentation">Workflow</a>
+        <a href="./" class="nav-link active" aria-label="About c2vector, Guides &amp; FAQ">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main id="main-content" class="about-main">
+    <!-- Hero Section -->
+    <header class="about-hero">
+      <div class="about-hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <span>100% Deterministic &bull; 0% Generative AI</span>
+      </div>
+      <h1>About <span>C2Vector</span> Studio</h1>
+      <p>The definitive high-precision raster-to-vector engine built purely in native browser Web Workers. Convert raster images, logos, and graphics to scalable SVG vectors and master print-ready PDF suites locally with zero cloud telemetry.</p>
+      
+      <div style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap;">
+        <a href="./" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <span>Launch C2Vector</span>
+        </a>
+        <a href="workflow/" class="btn btn-secondary">
+          <span>Read Algorithm Pipeline</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- Mission & Core Philosophy -->
+    <section class="about-section" aria-labelledby="mission-heading">
+      <h2 id="mission-heading">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <span>Why C2Vector Was Built</span>
+      </h2>
+      <p class="about-lead">
+        Most vectorizers on the web today suffer from one of three fatal flaws: they force you behind a predatory paywall, upload your private intellectual property and photos to opaque cloud servers, or wrap an uncalibrated generative AI model that invents phantom lines and distorts geometric precision.
+      </p>
+      <p class="about-lead">
+        <strong>c2vector was created to restore mathematical determinism to digital vectorization.</strong> By executing peer-reviewed computer vision algorithms (Canny edge detection, Otsu thresholding, CIELAB color quantization, and Potrace continuous Bézier fitting) directly inside client browser Web Workers, c2vector delivers infinite scalability, zero data leakage, and exact reproducibility.
+      </p>
+    </section>
+
+    <!-- Conversion Deep Dives (SEO High-Rank Keyword Hub) -->
+    <section class="about-section" aria-labelledby="deepdives-heading">
+      <h2 id="deepdives-heading">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+        <span>Conversion Deep Dives &amp; Supported Formats</span>
+      </h2>
+      <p class="about-lead">
+        Whether you are preparing corporate branding for vinyl cutting, converting camera photographs into silkscreen art plates, or rasterizing illustrations for responsive web apps, c2vector offers specialized pipelines tailored to your input media.
+      </p>
+
+      <div class="about-grid-2">
+        <article class="about-card-item">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            <span>Universal Image to Vector Engine</span>
+          </h3>
+          <p>
+            Seamlessly convert raster images (PNG, JPEG, WebP, AVIF) with transparent backgrounds into clean W3C SVG 1.1 vectors. Transparent pixels are preserved or knocked out cleanly, anti-aliased edge halos are eliminated, and spot colors are mapped directly to discrete vector path groupings.
+          </p>
+        </article>
+
+        <article class="about-card-item">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            <span>High-Resolution Photo to Scalable Vector</span>
+          </h3>
+          <p>
+            Transform compressed photographs into infinitely scalable vector art. Includes an automated pre-filtering stage with bicubic Hermite resampling and bilateral spatial/photometric Gaussian smoothing to purge compression artifacts before curve tracing.
+          </p>
+        </article>
+
+        <article class="about-card-item">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>
+            <span>Logo, Typography &amp; Graphic Engine</span>
+          </h3>
+          <p>
+            Engineered specifically for corporate logos, typography, monograms, and line icons with adaptive natural spot color discovery (up to 32 colors with zero truncation). Employs tight straight-line tolerance (<code>optTolerance: 0.08</code>) and corner preservation (<code>alphaMax: 0.15</code>) to guarantee razor-sharp 90-degree corners and retain small punctuation marks like dots on 'i'.
+          </p>
+        </article>
+
+        <article class="about-card-item">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5"></circle><circle cx="17.5" cy="10.5" r=".5"></circle><circle cx="8.5" cy="7.5" r=".5"></circle><circle cx="6.5" cy="12.5" r=".5"></circle><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"></path></svg>
+            <span>Multi-Tonal Silk Screen Art Plates</span>
+          </h3>
+          <p>
+            Decompose any photograph into 4-tone and 8-tone positive/negative color plates, 1-bit Otsu monochrome silhouettes, and laser-cut stencil bridges. Ideal for serigraphy screen printing, CNC router carving, and vinyl signage.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Comparison Matrix: c2vector vs Cloud vs AI -->
+    <section class="about-section" aria-labelledby="matrix-heading">
+      <h2 id="matrix-heading">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+        <span>c2vector vs. Cloud Vectorizers vs. Generative AI</span>
+      </h2>
+      <p class="about-lead">
+        See how deterministic in-browser vector synthesis outperforms legacy server-side SaaS tools and generative AI diffusion models:
+      </p>
+
+      <div class="comparison-table-wrapper">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Evaluation Feature</th>
+              <th class="highlight">C2Vector Studio</th>
+              <th>Legacy Cloud SaaS</th>
+              <th>Generative AI Models</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Execution Environment</strong></td>
+              <td class="highlight">100% In-Browser (Web Workers)</td>
+              <td>Remote Cloud Servers</td>
+              <td>GPU Cloud Cluster</td>
+            </tr>
+            <tr>
+              <td><strong>Privacy &amp; Security</strong></td>
+              <td class="highlight table-check">&#10003; Zero telemetry, no uploads</td>
+              <td class="table-cross">&#10007; Files stored on cloud</td>
+              <td class="table-cross">&#10007; Images used to train models</td>
+            </tr>
+            <tr>
+              <td><strong>Generative AI Usage &amp; Artifacts</strong></td>
+              <td class="highlight table-check">&#10003; 0% AI (Pure Mathematical Algorithms)</td>
+              <td>0% AI (Old heuristics)</td>
+              <td class="table-cross">&#10007; High (Generative model guessing &amp; warped curves)</td>
+            </tr>
+            <tr>
+              <td><strong>Corner &amp; Line Precision</strong></td>
+              <td class="highlight table-check">&#10003; Sharp 90° corners &amp; straight splines</td>
+              <td>Variable / Rounded</td>
+              <td class="table-cross">&#10007; Wavy curves, bowed edges</td>
+            </tr>
+            <tr>
+              <td><strong>Pricing Model</strong></td>
+              <td class="highlight table-check">&#10003; 100% Free Open-Source</td>
+              <td>Paywalls, credits, subscriptions</td>
+              <td>Paid API tokens / subscription</td>
+            </tr>
+            <tr>
+              <td><strong>Offline PWA Support</strong></td>
+              <td class="highlight table-check">&#10003; Full offline installation</td>
+              <td class="table-cross">&#10007; Requires constant internet</td>
+              <td class="table-cross">&#10007; Requires constant internet</td>
+            </tr>
+            <tr>
+              <td><strong>PDF Compiler Included</strong></td>
+              <td class="highlight table-check">&#10003; 12-Page Print-Ready PDF Suite</td>
+              <td class="table-cross">&#10007; Single SVG only or paid upsell</td>
+              <td class="table-cross">&#10007; None</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Step-by-Step Guide -->
+    <section class="about-section" aria-labelledby="guide-heading">
+      <h2 id="guide-heading">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 16 16 12 12 8"></polyline><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+        <span>How to Convert Images to Scalable Vectors</span>
+      </h2>
+      <div class="about-grid-2">
+        <div class="about-card-item">
+          <h3><span>1</span> Select Engine Mode</h3>
+          <p>Choose <strong>Photo / Decal Mode</strong> for complex multi-color photography and detailed portraits, or <strong>Logo &amp; Typography Mode</strong> for corporate branding, line art, and geometric graphics.</p>
+        </div>
+        <div class="about-card-item">
+          <h3><span>2</span> Ingest Your Image</h3>
+          <p>Drag and drop any PNG, JPEG, WebP, or AVIF file into the dropzone, or click browse to select a file from your hard drive or camera roll.</p>
+        </div>
+        <div class="about-card-item">
+          <h3><span>3</span> Inspect Interactive Studies</h3>
+          <p>Instantly preview the 12 specialized vector plates in the Studio Workbench, adjust the chromatic edge glaze slider in real time, or click color swatches to copy exact hex values.</p>
+        </div>
+        <div class="about-card-item">
+          <h3><span>4</span> Export Production Assets</h3>
+          <p>Download individual SVG plates for laser cutting or web development, export high-resolution PNGs at up to 4x Ultra HD, or compile a complete 12-page vector PDF suite.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Frequently Asked Questions (FAQ Accordion) -->
+    <section class="about-section" aria-labelledby="faq-heading">
+      <h2 id="faq-heading">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <span>Frequently Asked Questions</span>
+      </h2>
+
+      <div class="faq-list">
+        <details class="faq-item" open>
+          <summary class="faq-question">How do I convert an image to SVG without losing quality?</summary>
+          <div class="faq-answer">
+            c2vector converts raster images (PNG, JPEG, WebP, AVIF) into vector SVG files by tracing exact pixel contours using continuous cubic Bézier splines and corner-preserving Potrace algorithms. Transparent backgrounds are knocked out automatically, and spot colors are preserved with zero quality degradation at any resolution.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">Does c2vector use generative AI or machine learning models?</summary>
+          <div class="faq-answer">
+            No. c2vector guarantees 0% Generative AI. We do not use AI at all to convert your files. Every vector curve, color plate, and edge is calculated using 100% deterministic mathematical algorithms—sub-pixel Canny edge gradients, Otsu variance minimization, CIELAB color space quantization, and Schneider-Ramer-Peucker spline fitting executing purely in your local browser memory.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">Are my uploaded photos or company logos private and secure?</summary>
+          <div class="faq-answer">
+            Yes, 100%. All processing runs locally inside your browser's Web Workers. Your files are never uploaded to any remote server, cloud storage bucket, or third-party API. When you close or refresh the tab, all in-memory buffers are immediately reclaimed.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">How does the dedicated Logo &amp; Typography engine preserve 90-degree corners and multi-color palettes?</summary>
+          <div class="faq-answer">
+            The dedicated Logo Engine bypasses bilateral blurring to preserve raw pixel edges, groups anti-aliased transition pixels into true dominant spot colors with adaptive natural discovery (supporting up to 32 spot colors without artificial truncation), and configures the curve fitting engine with strict straight-line tolerance (<code>optTolerance: 0.08</code>) and corner preservation (<code>alphaMax: 0.15</code>) to maintain sharp 90-degree angles and tiny punctuation marks.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">Can I use the exported SVG vectors for commercial CNC, vinyl cutting, and silk screen printing?</summary>
+          <div class="faq-answer">
+            Yes. c2vector generates clean, standard W3C SVG 1.1 files with explicit viewBox coordinates, closed paths, and separate tonal plates specifically structured for laser cutting, vinyl sign plotting, silk screen stencil printing, embroidery, and CAD fabrication.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">Why is deterministic mathematical vectorization superior to AI vectorizers?</summary>
+          <div class="faq-answer">
+            Generative AI vectorizers invent unpredictable visual artifacts, warp straight geometry into wavy lines, and add phantom details. Deterministic mathematical vectorization produces exact, reproducible, and mathematically provable geometric boundaries that respect the original image.
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Bottom Launch Studio CTA -->
+    <div class="about-cta">
+      <h2>Ready to Vectorize Your Graphics?</h2>
+      <p>Transform photographs, monograms, logos, and illustrations into production-grade scalable vectors in seconds. 100% free, private, and deterministic.</p>
+      <a href="./" class="btn btn-primary btn-lg">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        <span>Open C2Vector</span>
+      </a>
+    </div>
+  </main>
+
+  <!-- Canonify Replicated Site Footer -->
+  <footer class="site-footer" role="contentinfo">
+    <div class="footer-container">
+      <div class="footer-top-row">
+        <div class="footer-meta-links">
+          <div class="footer-author">
+            <!-- Refined Brand Logo Icon -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M 2 17 C 5 9, 10 9, 13 13 C 15 15.5, 18 16, 22 11" stroke="#f4ba00" stroke-width="2" stroke-linecap="round"/>
+              <line x1="6" y1="9.5" x2="14" y2="9.5" stroke="#fedd3d" stroke-width="1.2" stroke-dasharray="1.5 1.5" opacity="0.9"/>
+              <circle cx="6" cy="9.5" r="1.3" fill="#fbd32c"/>
+              <circle cx="14" cy="9.5" r="1.3" fill="#fbd32c"/>
+              <g transform="translate(13, 13) scale(0.36) rotate(-100) translate(-25.332, -19.578)" fill="#f4ba00" fill-rule="evenodd">
+                <path d="M 25.332 19.578 C 24.655 21.341, 29.433 40.612, 31.022 42.526 C 31.581 43.200, 33.738 44.022, 35.816 44.355 C 38.441 44.774, 40.275 45.880, 41.827 47.979 C 43.055 49.641, 44.849 51, 45.814 51 C 47.682 51, 58 41.161, 58 39.379 C 58 38.797, 56.490 36.948, 54.645 35.268 C 52.301 33.136, 51.093 30.985, 50.637 28.133 C 50.002 24.161, 49.831 24.008, 44.242 22.436 C 41.084 21.548, 36.281 20.186, 33.568 19.410 C 27.286 17.614, 26.076 17.638, 25.332 19.578 M 34.500 26 C 36.343 27.924, 38.371 29, 40.152 29 C 43.750 29, 45.678 32.216, 44.124 35.626 C 43.412 37.190, 42.202 38, 40.578 38 C 37.977 38, 34.835 34.595, 35.599 32.604 C 35.845 31.962, 34.393 29.876, 32.373 27.969 C 29.930 25.662, 28.923 25.129, 29.368 26.379 C 29.735 27.412, 30.543 30.337, 31.162 32.879 C 32.904 40.025, 33.576 40.814, 38.569 41.563 C 42.697 42.182, 43.419 41.973, 46.131 39.375 C 48.703 36.911, 49.041 36.004, 48.511 33.001 C 47.360 26.480, 47.177 26.288, 40.513 24.614 C 31.754 22.413, 31.189 22.544, 34.500 26 M 39 33.500 C 39 34.417, 39.484 35.005, 40.075 34.808 C 40.666 34.611, 41.150 34.023, 41.150 33.500 C 41.150 32.977, 40.666 32.389, 40.075 32.192 C 39.484 31.995, 39 32.583, 39 33.500 M 47.699 41.796 C 44.803 44.762, 44.256 45.856, 45.200 46.800 C 46.144 47.744, 47.238 47.197, 50.204 44.301 C 54.054 40.542, 55.062 38, 52.703 38 C 51.990 38, 49.738 39.708, 47.699 41.796" />
+              </g>
+            </svg>
+            <span>&copy; 2026 <a href="https://www.linkedin.com/in/deekshithvodela/" target="_blank" rel="noopener noreferrer" aria-label="Deekshith Vodela LinkedIn profile (opens in new tab)">Deekshith Vodela</a></span>
+          </div>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <a href="./" class="footer-link">About</a>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <button id="btnOpenMitModal" class="footer-link" type="button">MIT License</button>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <button id="btnOpenPrivacyModal" class="footer-link" type="button">Privacy Policy</button>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <button id="btnOpenDisclosureModal" class="footer-link" type="button">Disclosure</button>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <span>Data updated: October 2026</span>
+        </div>
+
+        <div class="footer-action-pills">
+          <a href="https://deekshithvodela.substack.com/" target="_blank" rel="noopener noreferrer" aria-label="Subscribe to newsletter on Substack (opens in new tab)" class="footer-pill-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+            <span>Subscribe to Newsletter</span>
+          </a>
+          <a href="mailto:&#100;&#101;&#101;&#107;&#115;&#104;&#105;&#116;&#104;&#118;&#111;&#100;&#101;&#108;&#97;&#64;&#103;&#109;&#97;&#105;&#108;&#46;&#99;&#111;&#109;?subject=c2vector%20Feedback" class="footer-pill-btn" aria-label="Send feedback via email">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <span>Send Feedback</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MIT License Modal -->
+  <div id="modalMitLicense" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="mitModalTitle">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="mitModalTitle" class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+          <span>MIT License</span>
+        </h3>
+        <button class="modal-close-btn" data-modal-close type="button" aria-label="Close MIT License modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Copyright (c) 2026 Deekshith Vodela</p>
+        <pre>Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-modal-close type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Privacy Policy Modal -->
+  <div id="modalPrivacyPolicy" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="privacyModalTitle">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="privacyModalTitle" class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <span>Privacy Policy &amp; Security Guarantee</span>
+        </h3>
+        <button class="modal-close-btn" data-modal-close type="button" aria-label="Close Privacy Policy modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4>100% In-Browser Execution</h4>
+        <p>c2vector is engineered as an offline-capable, client-side progressive web application. Every calculation runs entirely inside your device's browser memory via Web Workers.</p>
+        <h4>Zero Cloud Storage &amp; Zero File Uploads</h4>
+        <p>Your uploaded photographs, generated SVG plates, and compiled PDFs never travel over the network to any server or cloud service.</p>
+        <h4>Zero Tracking, Cookies &amp; Third-Party Ad Pixels</h4>
+        <p>c2vector does not set advertising cookies, persist tracking identifiers, or sell analytics data. Usage metrics are gathered using GoatCounter—a privacy-first, GDPR-compliant open-source analytics service that does not record personal identifiable information (PII).</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-modal-close type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disclosure Modal -->
+  <div id="modalDisclosure" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="disclosureModalTitle">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="disclosureModalTitle" class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <span>Disclosure &amp; Technical Specifications</span>
+        </h3>
+        <button class="modal-close-btn" data-modal-close type="button" aria-label="Close Disclosure modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4>Deterministic Mathematical Vectorization (0% AI)</h4>
+        <p>c2vector is not a generative AI tool, machine learning model, or diffusion wrapper. All outputs are derived deterministically using peer-reviewed computer vision and geometric curve-fitting algorithms.</p>
+        <h4>Vector PDF &amp; SVG Compatibility</h4>
+        <p>All exported SVG files adhere strictly to the W3C SVG 1.1 standard. Exported vector PDFs are compiled using <code>jsPDF</code> and <code>svg2pdf.js</code> entirely in client memory without external rendering binaries.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-modal-close type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Theme Toggle & Modals Controller Script for About Page -->
+  <script>
+    (function() {
+      const btnThemeToggle = document.getElementById('btnThemeToggle');
+      const themeIconSun = document.getElementById('themeIconSun');
+      const themeIconMoon = document.getElementById('themeIconMoon');
+
+      function updateThemeIcons(theme) {
+        if (!themeIconSun || !themeIconMoon) return;
+        if (theme === 'dark') {
+          themeIconSun.style.display = 'block';
+          themeIconMoon.style.display = 'none';
+          if (btnThemeToggle) btnThemeToggle.setAttribute('aria-label', 'Switch to Light Mode');
+        } else {
+          themeIconSun.style.display = 'none';
+          themeIconMoon.style.display = 'block';
+          if (btnThemeToggle) btnThemeToggle.setAttribute('aria-label', 'Switch to Dark Mode');
+        }
+      }
+
+      const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+      updateThemeIcons(currentTheme);
+
+      btnThemeToggle?.addEventListener('click', () => {
+        const active = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+        const nextTheme = active === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        if (nextTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        localStorage.setItem('c2vector-theme', nextTheme);
+        updateThemeIcons(nextTheme);
+      });
+
+      // Modals
+      const modalMit = document.getElementById('modalMitLicense');
+      const modalPrivacy = document.getElementById('modalPrivacyPolicy');
+      const modalDisclosure = document.getElementById('modalDisclosure');
+
+      document.getElementById('btnOpenMitModal')?.addEventListener('click', () => modalMit?.classList.add('open'));
+      document.getElementById('btnOpenPrivacyModal')?.addEventListener('click', () => modalPrivacy?.classList.add('open'));
+      document.getElementById('btnOpenDisclosureModal')?.addEventListener('click', () => modalDisclosure?.classList.add('open'));
+
+      document.querySelectorAll('[data-modal-close]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          btn.closest('.modal-overlay')?.classList.remove('open');
+        });
+      });
+
+      [modalMit, modalPrivacy, modalDisclosure].forEach(modal => {
+        modal?.addEventListener('click', (e) => {
+          if (e.target === modal) modal.classList.remove('open');
+        });
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          [modalMit, modalPrivacy, modalDisclosure].forEach(m => m?.classList.remove('open'));
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

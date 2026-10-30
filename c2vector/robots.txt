@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://deekshithvodela.github.io/c2vector/sitemap.xml

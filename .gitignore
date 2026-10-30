@@ -1,0 +1,14 @@
+# Local implementation plan, development reports and project state
+implementation_plan.md
+report.md
+PROJECT_STATE.md
+
+# Dependencies & temporary scratch
+node_modules/
+.npm/
+scratch/
+.system_generated/
+.DS_Store
+
+# Historical and non-website legacy archive
+archive/

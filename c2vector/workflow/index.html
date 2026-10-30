@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vectorization Architecture &amp; Pipeline — c2vector</title>
+  <meta name="description" content="Explore c2vector's 6-step client-side vector synthesis pipeline: bicubic HD resampling, Canny sub-pixel edges, CIELAB quantization, continuous Bézier tracing, and 12-page vector PDF compilation.">
+  <meta name="author" content="Deekshith Vodela">
+  <link rel="canonical" href="https://deekshithvodela.github.io/c2vector/workflow/">
+  <meta name="theme-color" content="#0b0d10" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+  <meta name="google-site-verification" content="googleb30f9215a6887c17" />
+
+  <!-- GoatCounter Privacy-First Analytics -->
+  <script data-goatcounter="https://c2vector.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+
+  <!-- Anti-Flash Theme Script (Canonify Pattern) -->
+  <script>
+    (function() {
+      try {
+        const savedTheme = localStorage.getItem('c2vector-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        if (savedTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- PWA Manifest & Favicons -->
+  <link rel="manifest" href="../manifest.webmanifest">
+  <link rel="icon" type="image/x-icon" href="../assets/icons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="48x48" href="../assets/icons/favicon-48x48.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="../assets/icons/favicon-96x96.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="../assets/icons/favicon-192x192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="../assets/icons/apple-touch-icon.png">
+
+  <!-- OpenGraph Metadata -->
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://deekshithvodela.github.io/c2vector/workflow/">
+  <meta property="og:title" content="C2Vector — Vectorization Architecture &amp; Pipeline">
+  <meta property="og:description" content="Deep dive into client-side vectorization: HD resampling, multi-tonal decomposition, Canny edges, CIELAB quantization, and Bézier curves.">
+  <meta property="og:image" content="https://deekshithvodela.github.io/c2vector/assets/og/og-image.jpg">
+  <meta property="og:image:secure_url" content="https://deekshithvodela.github.io/c2vector/assets/og/og-image.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="C2Vector Architecture &amp; Pipeline Documentation">
+  <meta property="og:image" content="https://deekshithvodela.github.io/c2vector/assets/og/og-square.jpg">
+  <meta property="og:image:secure_url" content="https://deekshithvodela.github.io/c2vector/assets/og/og-square.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="600">
+  <meta property="og:image:height" content="600">
+  <meta property="og:image:alt" content="C2Vector App Icon">
+  <meta property="og:site_name" content="C2Vector">
+
+  <!-- Twitter Card Metadata -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://deekshithvodela.github.io/c2vector/workflow/">
+  <meta name="twitter:title" content="C2Vector — Vectorization Architecture &amp; Pipeline">
+  <meta name="twitter:description" content="Deep dive into client-side vectorization: HD resampling, multi-tonal decomposition, Canny edges, CIELAB quantization, and Bézier curves.">
+  <meta name="twitter:image" content="https://deekshithvodela.github.io/c2vector/assets/og/og-image.jpg">
+
+  <!-- Schema.org JSON-LD Structured Data for TechArticle -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "In-Browser Vectorization Architecture & Algorithmic Pipeline",
+    "description": "Comprehensive technical architecture of C2Vector: 6-step client-side deterministic raster-to-vector synthesis executing in Web Workers.",
+    "author": {
+      "@type": "Person",
+      "name": "Deekshith Vodela",
+      "url": "https://www.linkedin.com/in/deekshithvodela/"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "C2Vector",
+      "url": "https://deekshithvodela.github.io/c2vector/"
+    },
+    "image": [
+      "https://deekshithvodela.github.io/c2vector/assets/og/og-square.jpg",
+      "https://deekshithvodela.github.io/c2vector/assets/og/og-search.jpg",
+      "https://deekshithvodela.github.io/c2vector/assets/og/og-discover.jpg"
+    ],
+    "url": "https://deekshithvodela.github.io/c2vector/workflow/",
+    "mainEntityOfPage": "https://deekshithvodela.github.io/c2vector/workflow/"
+  }
+  </script>
+
+  <!-- Typography Preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <!-- Accessibility Skip Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Header & Navigation (Canonify Layout with Pen Tool Brand) -->
+  <header class="app-header" role="banner">
+    <div class="header-container">
+      <div class="header-top-bar">
+        <a href="../" class="brand" aria-label="c2vector Homepage">
+          <!-- Refined Brand Logo: Authentic Fountain Pen Nib Drawing Cubic Bézier Curve -->
+          <div class="brand-logo" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M 2 17 C 5 9, 10 9, 13 13 C 15 15.5, 18 16, 22 11" stroke="#f4ba00" stroke-width="2" stroke-linecap="round"/>
+              <line x1="6" y1="9.5" x2="14" y2="9.5" stroke="#fedd3d" stroke-width="1.2" stroke-dasharray="1.5 1.5" opacity="0.9"/>
+              <circle cx="6" cy="9.5" r="1.3" fill="#fbd32c"/>
+              <circle cx="14" cy="9.5" r="1.3" fill="#fbd32c"/>
+              <g transform="translate(13, 13) scale(0.36) rotate(-100) translate(-25.332, -19.578)" fill="#f4ba00" fill-rule="evenodd">
+                <path d="M 25.332 19.578 C 24.655 21.341, 29.433 40.612, 31.022 42.526 C 31.581 43.200, 33.738 44.022, 35.816 44.355 C 38.441 44.774, 40.275 45.880, 41.827 47.979 C 43.055 49.641, 44.849 51, 45.814 51 C 47.682 51, 58 41.161, 58 39.379 C 58 38.797, 56.490 36.948, 54.645 35.268 C 52.301 33.136, 51.093 30.985, 50.637 28.133 C 50.002 24.161, 49.831 24.008, 44.242 22.436 C 41.084 21.548, 36.281 20.186, 33.568 19.410 C 27.286 17.614, 26.076 17.638, 25.332 19.578 M 34.500 26 C 36.343 27.924, 38.371 29, 40.152 29 C 43.750 29, 45.678 32.216, 44.124 35.626 C 43.412 37.190, 42.202 38, 40.578 38 C 37.977 38, 34.835 34.595, 35.599 32.604 C 35.845 31.962, 34.393 29.876, 32.373 27.969 C 29.930 25.662, 28.923 25.129, 29.368 26.379 C 29.735 27.412, 30.543 30.337, 31.162 32.879 C 32.904 40.025, 33.576 40.814, 38.569 41.563 C 42.697 42.182, 43.419 41.973, 46.131 39.375 C 48.703 36.911, 49.041 36.004, 48.511 33.001 C 47.360 26.480, 47.177 26.288, 40.513 24.614 C 31.754 22.413, 31.189 22.544, 34.500 26 M 39 33.500 C 39 34.417, 39.484 35.005, 40.075 34.808 C 40.666 34.611, 41.150 34.023, 41.150 33.500 C 41.150 32.977, 40.666 32.389, 40.075 32.192 C 39.484 31.995, 39 32.583, 39 33.500 M 47.699 41.796 C 44.803 44.762, 44.256 45.856, 45.200 46.800 C 46.144 47.744, 47.238 47.197, 50.204 44.301 C 54.054 40.542, 55.062 38, 52.703 38 C 51.990 38, 49.738 39.708, 47.699 41.796" />
+              </g>
+            </svg>
+          </div>
+          <span class="brand-title">C2Vector</span>
+        </a>
+
+        <div class="header-utilities">
+          <!-- Dark/Light Mode Theme Toggle Button -->
+          <button id="btnThemeToggle" class="theme-toggle-btn" aria-label="Switch to Light Mode" title="Toggle Dark/Light Mode">
+            <svg id="themeIconSun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <svg id="themeIconMoon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </button>
+
+          <a href="https://github.com/deekshithvodela/c2vector" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" aria-label="View source repository on GitHub">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            <span class="github-label">GitHub</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Segmented Sub-Bar Navigation -->
+      <nav class="header-nav-bar" aria-label="Primary navigation">
+        <a href="../" class="nav-link" aria-label="Vector Studio">Studio</a>
+        <a href="./" class="nav-link active" aria-label="Architecture and Pipeline Documentation">Workflow</a>
+        <a href="../about/" class="nav-link" aria-label="About c2vector, Guides &amp; FAQ">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main id="main-content" class="workflow-main">
+    <div class="workflow-hero">
+      <h1>In-Browser Vectorization Architecture</h1>
+      <p>How C2Vector synthesizes camera photographs into high-precision, infinitely scalable vector artwork and master print-ready PDF suites locally inside browser Web Workers.</p>
+      
+      <div style="display:flex; justify-content:center; gap:1rem; margin-top:1.5rem; flex-wrap:wrap;">
+        <a href="../" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span>Launch C2Vector</span>
+        </a>
+        <a href="https://github.com/deekshithvodela/c2vector" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+          <span>Read Source on GitHub</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Step 1 -->
+    <section class="workflow-step-card" aria-labelledby="step1-title">
+      <div class="workflow-step-header">
+        <span class="workflow-step-num">1</span>
+        <div>
+          <h2 id="step1-title" class="workflow-step-title">Bicubic HD Resampling &amp; Bilateral Denoising</h2>
+          <div style="font-size:0.85rem; color:var(--accent-gold); font-weight:700;">Resolution Normalization &bull; Pre-Filter Pipeline</div>
+        </div>
+      </div>
+      <p class="workflow-step-desc">
+        Consumer smartphone photos and web images present varying aspect ratios, ISO sensor noise, and compression artifacts. In Step 1, the image is ingested onto an offscreen canvas and mapped through a high-precision bicubic interpolation kernel with a target dimension of 1856&times;2048px (or proportional HD bounds).
+      </p>
+      <div class="workflow-grid-2">
+        <div class="workflow-spec-box">
+          <h4>Bicubic Interpolation Kernel</h4>
+          <p>Interpolates across a 16-pixel neighborhood using cubic Hermite splines. Avoids jagged nearest-neighbor steps and prevents blurring associated with standard bilinear passes.</p>
+        </div>
+        <div class="workflow-spec-box">
+          <h4>Bilateral Filter Denoising</h4>
+          <p>Applies edge-preserving spatial and photometric range Gaussian weights. Flattens micro-texture in background regions while retaining sharp optical boundaries.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2 -->
+    <section class="workflow-step-card" aria-labelledby="step2-title">
+      <div class="workflow-step-header">
+        <span class="workflow-step-num">2</span>
+        <div>
+          <h2 id="step2-title" class="workflow-step-title">Multi-Tonal Decomposition &amp; Stencil Synthesis</h2>
+          <div style="font-size:0.85rem; color:var(--accent-gold); font-weight:700;">Otsu Binarization &bull; Positive/Negative Plates &bull; Island Bridging</div>
+        </div>
+      </div>
+      <p class="workflow-step-desc">
+        To support manufacturing applications (laser engraving, CNC plasma cutting, silkscreen printing, vinyl plotting), the image is decomposed into discrete tonal layers across multiple density thresholds.
+      </p>
+      <div class="workflow-grid-2">
+        <div class="workflow-spec-box">
+          <h4>Otsu Variance Optimization</h4>
+          <p>Calculates the optimal global threshold <i>t</i>* maximizing inter-class luminance variance &sigma;<sub>B</sub>&sup2;(<i>t</i>) between foreground and background pixels, generating an authentic 1-bit monochrome mask.</p>
+        </div>
+        <div class="workflow-spec-box">
+          <h4>Bridge-Connected Laser Stencil</h4>
+          <p>Detects closed vector loops ("islands" and "counter-spaces") using connected-component analysis and automatically introduces structural connection bridges so cut pieces stay physically attached.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3 -->
+    <section class="workflow-step-card" aria-labelledby="step3-title">
+      <div class="workflow-step-header">
+        <span class="workflow-step-num">3</span>
+        <div>
+          <h2 id="step3-title" class="workflow-step-title">Sub-Pixel Canny &amp; Focus Depth Outlines</h2>
+          <div style="font-size:0.85rem; color:var(--accent-gold); font-weight:700;">Gradient Sobel &bull; Non-Maximum Suppression &bull; Dual Hysteresis</div>
+        </div>
+      </div>
+      <p class="workflow-step-desc">
+        Crisp vector artwork requires clear anatomical and focal boundaries. Step 3 executes a Canny edge detector in pure JavaScript inside the Web Worker to isolate structural contours at single-pixel width.
+      </p>
+      <div class="workflow-grid-2">
+        <div class="workflow-spec-box">
+          <h4>Non-Maximum Suppression (NMS)</h4>
+          <p>Computes gradient vectors (<i>G<sub>x</sub></i>, <i>G<sub>y</sub></i>) and magnitude <i>M</i> = &radic;(<i>G<sub>x</sub></i>&sup2; + <i>G<sub>y</sub></i>&sup2;). Thins thick edges by suppressing any gradient value that is not a local maximum along the gradient direction.</p>
+        </div>
+        <div class="workflow-spec-box">
+          <h4>Dual-Threshold Hysteresis</h4>
+          <p>Categorizes pixels into strong (<i>M</i> &ge; <i>T</i><sub>high</sub>) and weak (<i>T</i><sub>low</sub> &le; <i>M</i> &lt; <i>T</i><sub>high</sub>) edges. Traces edge paths recursively, keeping weak pixels only if topologically connected to strong ridges.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 4 -->
+    <section class="workflow-step-card" aria-labelledby="step4-title">
+      <div class="workflow-step-header">
+        <span class="workflow-step-num">4</span>
+        <div>
+          <h2 id="step4-title" class="workflow-step-title">Perceptual CIELAB Quantization &amp; Tone Match Index</h2>
+          <div style="font-size:0.85rem; color:var(--accent-gold); font-weight:700;">CIE L*a*b* &Delta;E &bull; Median Cut &bull; Pearson Correlation Calibration</div>
+        </div>
+      </div>
+      <p class="workflow-step-desc">
+        Converting true-color continuous-tone photography into vector regions demands perceptually uniform color clustering. Human vision is non-linear and significantly more sensitive to luminance shifts than hue changes.
+      </p>
+      <div class="workflow-grid-2">
+        <div class="workflow-spec-box">
+          <h4>CIELAB Uniform Color Space</h4>
+          <p>RGB pixels are transformed into device-independent CIE <i>XYZ</i> and then into <i>L*a*b*</i>. Euclidean distance &Delta;<i>E</i> = &radic;(&Delta;<i>L</i>*&sup2; + &Delta;<i>a</i>*&sup2; + &Delta;<i>b</i>*&sup2;) reflects true perceived visual distance.</p>
+        </div>
+        <div class="workflow-spec-box">
+          <h4>Tone Match Index (TMI &ge; 0.98)</h4>
+          <p>Computes the Pearson correlation coefficient <i>r</i> = cov(<i>X</i>, <i>Y</i>) / (&sigma;<sub><i>X</i></sub> &sigma;<sub><i>Y</i></sub>) between the quantized plate and the original photo, proving zero tonal distortion.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 5 -->
+    <section class="workflow-step-card" aria-labelledby="step5-title">
+      <div class="workflow-step-header">
+        <span class="workflow-step-num">5</span>
+        <div>
+          <h2 id="step5-title" class="workflow-step-title">Continuous Cubic B&eacute;zier Tracing &amp; Chromatic Glaze</h2>
+          <div style="font-size:0.85rem; color:var(--accent-gold); font-weight:700;">Potrace Path Tracer &bull; Tangent Continuity &bull; Real-Time Opacity Glaze</div>
+        </div>
+      </div>
+      <p class="workflow-step-desc">
+        Quantized raster boundaries are converted into mathematical spline paths. Raster pixels are traced into closed vector polygons, simplified using the Douglas-Peucker algorithm, and fitted with smooth cubic B&eacute;zier curves: <i>C</i>(<i>t</i>) = (1&minus;<i>t</i>)&sup3;<i>P</i><sub>0</sub> + 3(1&minus;<i>t</i>)&sup2;<i>tP</i><sub>1</sub> + 3(1&minus;<i>t</i>)<i>t</i>&sup2;<i>P</i><sub>2</sub> + <i>t</i>&sup3;<i>P</i><sub>3</sub>.
+      </p>
+      <div class="workflow-grid-2">
+        <div class="workflow-spec-box">
+          <h4>Continuous <i>G</i>&sup1; Curve Continuity</h4>
+          <p>Aligns tangent vectors at path junctions to eliminate sharp staircase artifacts while preserving sharp corners when the angular change exceeds the corner threshold &alpha;<sub>corner</sub> &gt; 60&deg;.</p>
+        </div>
+        <div class="workflow-spec-box">
+          <h4>Chromatic Edge Glaze Control</h4>
+          <p>Structural edge contours are layered with adjustable opacity (0% to 100%) sampled directly from surrounding color planes, providing a luminous, hand-drafted lithograph aesthetic rather than flat black outlines.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 6 -->
+    <section class="workflow-step-card" aria-labelledby="step6-title">
+      <div class="workflow-step-header">
+        <span class="workflow-step-num">6</span>
+        <div>
+          <h2 id="step6-title" class="workflow-step-title">12-Page Master Vector PDF Suite &amp; Multi-Format Export</h2>
+          <div style="font-size:0.85rem; color:var(--accent-gold); font-weight:700;">Client-Side jsPDF &bull; svg2pdf &bull; Offscreen Canvas 4x Rasterization</div>
+        </div>
+      </div>
+      <p class="workflow-step-desc">
+        The output is compiled into an industry-standard 12-page vector PDF suite and multi-scale SVG artboards directly in the client browser with zero server roundtrips.
+      </p>
+      <div class="workflow-grid-2">
+        <div class="workflow-spec-box">
+          <h4>True Scalable Vector PDF</h4>
+          <p>Uses <code>svg2pdf.js</code> and <code>jsPDF</code> to parse SVG DOM trees into native PDF vector operators (<code>m</code>, <code>c</code>, <code>f</code>, <code>S</code>). Files scale infinitely in Adobe Illustrator and CAD plotters.</p>
+        </div>
+        <div class="workflow-spec-box">
+          <h4>Offscreen Canvas PNG Exporter</h4>
+          <p>As a secondary raster convenience, vector paths are drawn onto an in-memory <code>OffscreenCanvas</code> at 1x, 2x, or 4x (300 DPI print) resolutions with instant zero-overhead PNG blob downloads.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom Studio CTA -->
+    <div class="workflow-cta-card">
+      <h2>Ready to vectorise your photo?</h2>
+      <p>Process any photograph locally on your phone or desktop. 100% free, private, and offline capable.</p>
+      <a href="../" class="btn btn-primary btn-lg" style="display:inline-flex; align-items:center; gap:0.6rem; padding:0.85rem 1.75rem; font-size:1rem;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span>Open C2Vector</span>
+      </a>
+    </div>
+  </main>
+
+  <!-- Canonify Replicated Site Footer -->
+  <!-- Canonify Replicated Site Footer -->
+  <footer class="site-footer" role="contentinfo">
+    <div class="footer-container">
+      <div class="footer-top-row">
+        <div class="footer-meta-links">
+          <div class="footer-author">
+            <!-- Refined Brand Logo Icon -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M 2 17 C 5 9, 10 9, 13 13 C 15 15.5, 18 16, 22 11" stroke="#f4ba00" stroke-width="2" stroke-linecap="round"/>
+              <line x1="6" y1="9.5" x2="14" y2="9.5" stroke="#fedd3d" stroke-width="1.2" stroke-dasharray="1.5 1.5" opacity="0.9"/>
+              <circle cx="6" cy="9.5" r="1.3" fill="#fbd32c"/>
+              <circle cx="14" cy="9.5" r="1.3" fill="#fbd32c"/>
+              <g transform="translate(13, 13) scale(0.36) rotate(-100) translate(-25.332, -19.578)" fill="#f4ba00" fill-rule="evenodd">
+                <path d="M 25.332 19.578 C 24.655 21.341, 29.433 40.612, 31.022 42.526 C 31.581 43.200, 33.738 44.022, 35.816 44.355 C 38.441 44.774, 40.275 45.880, 41.827 47.979 C 43.055 49.641, 44.849 51, 45.814 51 C 47.682 51, 58 41.161, 58 39.379 C 58 38.797, 56.490 36.948, 54.645 35.268 C 52.301 33.136, 51.093 30.985, 50.637 28.133 C 50.002 24.161, 49.831 24.008, 44.242 22.436 C 41.084 21.548, 36.281 20.186, 33.568 19.410 C 27.286 17.614, 26.076 17.638, 25.332 19.578 M 34.500 26 C 36.343 27.924, 38.371 29, 40.152 29 C 43.750 29, 45.678 32.216, 44.124 35.626 C 43.412 37.190, 42.202 38, 40.578 38 C 37.977 38, 34.835 34.595, 35.599 32.604 C 35.845 31.962, 34.393 29.876, 32.373 27.969 C 29.930 25.662, 28.923 25.129, 29.368 26.379 C 29.735 27.412, 30.543 30.337, 31.162 32.879 C 32.904 40.025, 33.576 40.814, 38.569 41.563 C 42.697 42.182, 43.419 41.973, 46.131 39.375 C 48.703 36.911, 49.041 36.004, 48.511 33.001 C 47.360 26.480, 47.177 26.288, 40.513 24.614 C 31.754 22.413, 31.189 22.544, 34.500 26 M 39 33.500 C 39 34.417, 39.484 35.005, 40.075 34.808 C 40.666 34.611, 41.150 34.023, 41.150 33.500 C 41.150 32.977, 40.666 32.389, 40.075 32.192 C 39.484 31.995, 39 32.583, 39 33.500 M 47.699 41.796 C 44.803 44.762, 44.256 45.856, 45.200 46.800 C 46.144 47.744, 47.238 47.197, 50.204 44.301 C 54.054 40.542, 55.062 38, 52.703 38 C 51.990 38, 49.738 39.708, 47.699 41.796" />
+              </g>
+            </svg>
+            <span>&copy; 2026 <a href="https://www.linkedin.com/in/deekshithvodela/" target="_blank" rel="noopener noreferrer" aria-label="Deekshith Vodela LinkedIn profile (opens in new tab)">Deekshith Vodela</a></span>
+          </div>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <a href="../about/" class="footer-link">About</a>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <button id="btnOpenMitModal" class="footer-link" type="button">MIT License</button>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <button id="btnOpenPrivacyModal" class="footer-link" type="button">Privacy Policy</button>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <button id="btnOpenDisclosureModal" class="footer-link" type="button">Disclosure</button>
+          <span class="footer-separator" aria-hidden="true">&bull;</span>
+          <span>Data updated: October 2026</span>
+        </div>
+
+        <div class="footer-action-pills">
+          <a href="https://deekshithvodela.substack.com/" target="_blank" rel="noopener noreferrer" aria-label="Subscribe to newsletter on Substack (opens in new tab)" class="footer-pill-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+            <span>Subscribe to Newsletter</span>
+          </a>
+          <a href="mailto:deekshithvodela@gmail.com?subject=c2vector%20Feedback" class="footer-pill-btn" aria-label="Send feedback via email">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <span>Send Feedback</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MIT License Modal -->
+  <div id="modalMitLicense" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="mitModalTitle">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="mitModalTitle" class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+            <path d="M2 17l10 5 10-5"></path>
+            <path d="M2 12l10 5 10-5"></path>
+          </svg>
+          <span>MIT License</span>
+        </h3>
+        <button class="modal-close-btn" data-modal-close aria-label="Close MIT License modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Copyright (c) 2026 Deekshith Vodela</p>
+        <pre>Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Privacy Policy Modal -->
+  <div id="modalPrivacyPolicy" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="privacyModalTitle">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="privacyModalTitle" class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Privacy Policy &amp; Security Guarantee</span>
+        </h3>
+        <button class="modal-close-btn" data-modal-close aria-label="Close Privacy Policy modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4>100% In-Browser Execution</h4>
+        <p>c2vector is engineered from first principles as an offline-capable, client-side progressive web application. Every operation — image resampling, bilateral filtering, Canny edge detection, Otsu binarization, CIELAB quantization, Bézier curve tracing, and multi-page PDF compilation — runs entirely inside your device's browser memory via Web Workers.</p>
+
+        <h4>Zero Cloud Storage &amp; Zero File Uploads</h4>
+        <p>Your uploaded photographs, generated SVG plates, and compiled PDFs never travel over the network to any server or cloud service. Once you close or reload the tab, in-memory image buffers are immediately reclaimed by garbage collection.</p>
+
+        <h4>Zero Tracking, Cookies &amp; Third-Party Ad Pixels</h4>
+        <p>c2vector does not set advertising cookies, persist tracking identifiers, or sell analytics data. Usage metrics are gathered using GoatCounter — a privacy-first, GDPR-compliant open-source analytics service that does not track users across sites or record personal identifiable information (PII).</p>
+
+        <h4>Local Preferences</h4>
+        <p>Only your aesthetic UI theme preference (dark/light mode) is stored locally on your device via <code>localStorage</code> to prevent screen flickering upon future visits.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disclosure Modal -->
+  <div id="modalDisclosure" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="disclosureModalTitle">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="disclosureModalTitle" class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          <span>Disclosure &amp; Technical Specifications</span>
+        </h3>
+        <button class="modal-close-btn" data-modal-close aria-label="Close Disclosure modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4>Deterministic Mathematical Vectorization (0% AI)</h4>
+        <p>c2vector is not a generative AI tool, machine learning model, or diffusion wrapper. All outputs are derived deterministically using peer-reviewed computer vision and geometric curve-fitting algorithms:</p>
+        <ul>
+          <li><strong>Otsu Automatic Binarization:</strong> Minimizes intra-class variance to isolate foreground silhouettes.</li>
+          <li><strong>Canny Sub-Pixel Edge Detection:</strong> Sobel convolution kernels with hysteresis thresholding and non-maximum suppression.</li>
+          <li><strong>CIELAB Color Space Quantization:</strong> Perceptually uniform k-means clustering calibrated to human visual sensitivity.</li>
+          <li><strong>Schneider-Ramer-Peucker Spline Fitting:</strong> Continuous parametric cubic Bézier curve tracing with G1 geometric slope continuity.</li>
+        </ul>
+
+        <h4>Vector PDF &amp; SVG Compatibility</h4>
+        <p>All exported SVG files adhere strictly to the W3C SVG 1.1 standard with clean grouping, semantic attributes, and explicit viewBox boundaries. Exported vector PDFs are compiled using <code>jsPDF</code> and <code>svg2pdf.js</code> entirely in client memory without external rendering binaries.</p>
+
+        <h4>Open Source &amp; Attribution</h4>
+        <p>c2vector is built and maintained as an independent open-source project by Deekshith Vodela. Contributions and issue reports are welcomed on GitHub.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Theme Toggle & Modals Controller Script for Workflow Page -->
+  <script>
+    (function() {
+      const btnThemeToggle = document.getElementById('btnThemeToggle');
+      const themeIconSun = document.getElementById('themeIconSun');
+      const themeIconMoon = document.getElementById('themeIconMoon');
+
+      function updateThemeIcons(theme) {
+        if (!themeIconSun || !themeIconMoon) return;
+        if (theme === 'dark') {
+          themeIconSun.style.display = 'block';
+          themeIconMoon.style.display = 'none';
+          if (btnThemeToggle) btnThemeToggle.setAttribute('aria-label', 'Switch to Light Mode');
+        } else {
+          themeIconSun.style.display = 'none';
+          themeIconMoon.style.display = 'block';
+          if (btnThemeToggle) btnThemeToggle.setAttribute('aria-label', 'Switch to Dark Mode');
+        }
+      }
+
+      // Initialize icons on load
+      const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+      updateThemeIcons(currentTheme);
+
+      btnThemeToggle?.addEventListener('click', () => {
+        const active = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+        const nextTheme = active === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        if (nextTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        localStorage.setItem('c2vector-theme', nextTheme);
+        updateThemeIcons(nextTheme);
+      });
+
+      // Accessible Modals Controller
+      const modalMit = document.getElementById('modalMitLicense');
+      const modalPrivacy = document.getElementById('modalPrivacyPolicy');
+      const modalDisclosure = document.getElementById('modalDisclosure');
+
+      document.getElementById('btnOpenMitModal')?.addEventListener('click', () => modalMit?.classList.add('open'));
+      document.getElementById('btnOpenPrivacyModal')?.addEventListener('click', () => modalPrivacy?.classList.add('open'));
+      document.getElementById('btnOpenDisclosureModal')?.addEventListener('click', () => modalDisclosure?.classList.add('open'));
+
+      document.querySelectorAll('[data-modal-close]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          btn.closest('.modal-overlay')?.classList.remove('open');
+        });
+      });
+
+      [modalMit, modalPrivacy, modalDisclosure].forEach(modal => {
+        modal?.addEventListener('click', (e) => {
+          if (e.target === modal) modal.classList.remove('open');
+        });
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          [modalMit, modalPrivacy, modalDisclosure].forEach(m => m?.classList.remove('open'));
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
