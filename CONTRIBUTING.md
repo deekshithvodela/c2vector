@@ -24,11 +24,12 @@ Before proposing any changes, please keep in mind the foundational principles of
    git clone https://github.com/deekshithvodela/c2vector.git
    cd c2vector
    ```
-2. **Start the Local Development Server:**
+2. **Install Dependencies & Start Dev Server:**
    ```bash
-   node c2vector/server.js
+   npm install
+   npm run dev
    ```
-   Open `http://localhost:8080/` in your browser.
+   Open `http://localhost:5173/c2vector/` in your browser.
 
 ---
 
@@ -57,11 +58,9 @@ All pull requests must adhere to our zero-diagnostic quality policy:
 Before submitting a PR, verify that all automated verification suites pass:
 
 ```bash
-# Verify AST diagnostics, button types, SVG accessibility, and HTTPS protocols:
-node scripts/verify_phase28.mjs
-
-# Verify Clean URLs, OpenGraph asset sizes (<100KB), and headless browser navigation:
-node scripts/verify_phase27.mjs
+# Run the complete automated test & verification suite:
+npm test
+# (or: node scripts/suite.mjs)
 ```
 
 ---

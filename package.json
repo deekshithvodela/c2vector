@@ -1,15 +1,28 @@
 {
-  "name": "vector",
+  "name": "c2vector",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "High-precision in-browser image to scalable vector & SVG converter studio with 0% Generative AI.",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node scripts/suite.mjs",
+    "generate:og": "node scripts/suite.mjs --og"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "svg",
+    "vectorizer",
+    "image-to-svg",
+    "potrace",
+    "client-side",
+    "pwa"
+  ],
+  "author": "Deekshith Vodela",
+  "license": "MIT",
   "devDependencies": {
-    "potrace": "^2.1.8"
+    "potrace": "^2.1.8",
+    "vite": "^5.4.21"
   }
 }
+

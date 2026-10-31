@@ -12,3 +12,10 @@ scratch/
 
 # Historical and non-website legacy archive
 archive/
+
+# Build outputs
+dist/
+
+# Ephemeral test results and scratch runs in scripts
+scripts/lighthouse_results.json
+scripts/*.html

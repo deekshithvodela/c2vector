@@ -16,7 +16,7 @@
 <br>
 
 <p align="center">
-  <img src="c2vector/assets/og/og-image.jpg" width="800" alt="C2Vector Studio Hero Banner">
+  <img src="public/assets/og/og-image.jpg" width="800" alt="C2Vector Studio Hero Banner">
 </p>
 
 </div>
@@ -110,53 +110,52 @@ graph TD
 
 ```
 c2vector/
+├── public/                      # Static unbundled assets copied directly to dist/
+│   ├── favicon.ico              # Standard root favicon
+│   ├── manifest.webmanifest     # Progressive Web App manifest
+│   ├── sw.js                    # Offline Service Worker cache (c2vector-v7)
+│   ├── robots.txt               # Search crawler directives
+│   ├── sitemap.xml              # Canonical clean XML sitemap
+│   ├── .nojekyll                # GitHub Pages static asset bypass
+│   ├── assets/
+│   │   ├── icons/               # Favicon suite (48, 96, 192, 512, apple-touch)
+│   │   ├── og/                  # Multi-aspect OpenGraph cards (<100KB, Golden & B&W)
+│   │   ├── sample_logo.png      # Built-in demo logo graphic
+│   │   └── sample_photo.png     # Built-in demo photography artwork
+│   └── vendor/
+│       ├── jspdf.umd.min.js     # Client-side PDF generator
+│       └── svg2pdf.umd.min.js   # SVG-to-PDF geometry converter
+├── src/
+│   ├── css/
+│   │   └── style.css            # Universal design system (Amber/Obsidian theme)
+│   ├── js/
+│   │   ├── app.js               # Application coordinator, UI events, pan-zoom engine
+│   │   └── engine/
+│   │       ├── bezier-tracer.js # Continuous cubic Bézier curve tracing
+│   │       ├── edge-depth.js    # Canny edge detection & focus depth mapping
+│   │       ├── image-ops.js     # Bicubic Hermite resampling & bilateral smoothing
+│   │       ├── logo-engine.js   # Dedicated 90° corner & spot color optimizer
+│   │       ├── pipeline.js      # Systematic 6-step vector orchestration
+│   │       ├── potrace.js       # Client-side Potrace curve fitting port
+│   │       ├── quantizer.js     # CIELAB Delta E color quantization
+│   │       ├── tonal-studies.js # Otsu monochrome, 4-tone/8-tone, bridge stencils
+│   │       └── worker.js        # Background Web Worker sandbox
+│   └── vendor/                  # Bundled engine vendor modules
 ├── index.html                   # Primary Studio Workbench application
-├── about.html                   # About documentation (standalone clean route fallback)
 ├── about/
 │   └── index.html               # Clean URL directory endpoint (/about/)
-├── workflow.html                # Algorithm documentation (clean route fallback)
 ├── workflow/
 │   └── index.html               # Clean URL directory endpoint (/workflow/)
-├── assets/
-│   ├── icons/                   # Favicon suite (48, 96, 192, 512, apple-touch, .ico)
-│   ├── og/                      # Multi-aspect OpenGraph cards (<100KB, Yellow & B&W)
-│   ├── sample_logo.png          # Built-in demo logo graphic
-│   └── sample_photo.png         # Built-in demo photography artwork
-├── css/
-│   └── style.css                # Universal design system (Yellow/Obsidian dark/light theme)
-├── js/
-│   ├── app.js                   # Application coordinator, UI events, pan-zoom engine
-│   ├── engine/
-│   │   ├── bezier-tracer.js     # Continuous cubic Bézier curve tracing
-│   │   ├── edge-depth.js        # Canny edge detection & focus depth mapping
-│   │   ├── image-ops.js         # Bicubic Hermite resampling & bilateral smoothing
-│   │   ├── logo-engine.js       # Dedicated 90° corner & spot color optimizer
-│   │   ├── pipeline.js          # Systematic 6-step vector orchestration
-│   │   ├── potrace.js           # Client-side Potrace curve fitting port
-│   │   ├── quantizer.js         # CIELAB Delta E color quantization
-│   │   ├── tonal-studies.js     # Otsu monochrome, 4-tone/8-tone, bridge stencils
-│   │   └── worker.js            # Background Web Worker sandbox
-│   └── export/
-│       ├── pdf-builder.js       # In-browser multi-page vector PDF compiler
-│       └── png-exporter.js      # On-demand high-resolution rasterizer (1x, 2x, 4x)
-├── vendor/
-│   ├── jspdf.umd.min.js         # Client-side PDF generator
-│   └── svg2pdf.umd.min.js       # SVG-to-PDF geometry converter
-├── manifest.webmanifest         # Progressive Web App manifest
-├── sw.js                        # Offline Service Worker cache (c2vector-v6)
-├── robots.txt                   # Search crawler directives
-├── sitemap.xml                  # Canonical clean XML sitemap
-├── server.js                    # Local development server with clean URL rewrites
-├── README.md                    # Standalone application documentation
+├── vite.config.js               # Vite multi-page build configuration
+├── package.json                 # Project manifest & npm scripts
+├── README.md                    # Repository documentation
 ├── LICENSE                      # Official MIT License
-└── .nojekyll                    # GitHub Pages static asset bypass
+└── SECURITY.md                  # Security and vulnerability policy
 ```
 
 ---
 
 ## 🚀 Quickstart & Local Development
-
-No heavy build toolchain, bundler, or foreign runtime is required. C2Vector is built using native ES Modules and modern Web APIs.
 
 ### 1. Clone the Repository
 ```bash
@@ -164,24 +163,29 @@ git clone https://github.com/deekshithvodela/c2vector.git
 cd c2vector
 ```
 
-### 2. Start the Local Server
+### 2. Install Dependencies & Start Dev Server
 ```bash
-# Using the built-in Node.js clean URL dev server:
-node c2vector/server.js
-
-# Or using Python 3:
-python3 -m http.server 8080 --directory c2vector
+npm install
+npm run dev
 ```
 
-Open your browser at `http://localhost:8080/`.
+Open your browser at `http://localhost:5173/c2vector/`.
+
+### 3. Build for Production
+```bash
+npm run build
+npm run preview
+```
 
 ### 3. Run Automated Quality & Verification Suites
 ```bash
-# Verify static AST, 0 yellow dots, accessibility, and HTTPS protocols:
-node scripts/verify_phase28.mjs
+# Run the complete automated test & verification suite:
+npm test
+# (or: node scripts/suite.mjs)
 
-# Verify Clean URLs, OpenGraph image dimensions, and routing integrity:
-node scripts/verify_phase27.mjs
+# Generate luxury OpenGraph social preview card suite:
+npm run generate:og
+# (or: node scripts/suite.mjs --og)
 ```
 
 ---
