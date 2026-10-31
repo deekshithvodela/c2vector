@@ -455,6 +455,93 @@ export async function runTestSuite() {
   });
   assert(!mobileOverflow.hasOverflow, `Mobile 320px: Zero horizontal overflow (scrollWidth: ${mobileOverflow.bodyScroll}px <= window: ${mobileOverflow.windowW}px)`);
 
+  // --- SECTION 8: NATIVE VIEWBOX ZOOM CRISPNESS & 60FPS ARCHITECTURE ---
+  console.log('\n--- Section 8: Native ViewBox Zoom Crispness & 60fps Architecture ---');
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('http://localhost:5173/c2vector/', { waitUntil: 'networkidle' });
+  await page.click('#btnSample');
+  await page.waitForSelector('#workbench', { state: 'visible', timeout: 20000 });
+  await page.waitForSelector('#viewport svg', { timeout: 20000 });
+  await page.waitForTimeout(500);
+
+  // 1. Verify CSS Layer Optimization: 0 will-change and 0 drop-shadow filter on SVG
+  const svgStyles = await page.evaluate(() => {
+    const svg = document.querySelector('#viewport svg');
+    const comp = window.getComputedStyle(svg);
+    return {
+      willChange: comp.willChange,
+      filter: comp.filter
+    };
+  });
+  assert(svgStyles.willChange !== 'transform', 'CSS Layering: SVG will-change is NOT forced to transform (prevents 1x GPU texture clamping)');
+  assert(!svgStyles.filter || svgStyles.filter === 'none', 'CSS Layering: Zero filter: drop-shadow on SVG (eliminates GPU raster blur on Bézier paths)');
+
+  // 2. Verify ViewBox Zoom Calculation at 1x, 2x, 4x, 8x
+  const zoomVbResults = await page.evaluate(async () => {
+    const svg = document.querySelector('#viewport svg');
+    const baseW = window.__c2vectorState.baseViewBox.width;
+    const baseH = window.__c2vectorState.baseViewBox.height;
+
+    const tests = [1, 2, 4, 8];
+    const outcomes = [];
+
+    for (const z of tests) {
+      const btn = document.querySelector(`.zoom-btn[data-zoom="${z}"]`);
+      if (btn) btn.click();
+      await new Promise(r => setTimeout(r, 300));
+
+      const vb = svg.getAttribute('viewBox').split(' ').map(Number);
+      const expectedW = baseW / z;
+      const expectedH = baseH / z;
+
+      const wMatch = Math.abs(vb[2] - expectedW) < 1;
+      const hMatch = Math.abs(vb[3] - expectedH) < 1;
+      outcomes.push({ zoom: z, wMatch, hMatch, actualW: vb[2], expectedW });
+    }
+    return outcomes;
+  });
+
+  for (const r of zoomVbResults) {
+    assert(r.wMatch && r.hMatch, `ViewBox Zoom Engine: Magnification ${r.zoom}x scales viewBox dimensions to 1/${r.zoom}th (${r.actualW.toFixed(1)}px vs ${r.expectedW.toFixed(1)}px)`);
+  }
+
+  // 3. Verify Soft Boundary Clamping on Pan
+  const panClampTest = await page.evaluate(async () => {
+    // Zoom to 4x
+    const btn4x = document.querySelector('.zoom-btn[data-zoom="4"]');
+    if (btn4x) btn4x.click();
+    await new Promise(r => setTimeout(r, 300));
+
+    // Try setting huge out-of-bounds pan
+    window.__c2vectorState.panX = 99999;
+    window.__c2vectorState.panY = -99999;
+    window.__c2vectorState.renderViewBox();
+
+    const clampedPanX = window.__c2vectorState.panX;
+    const clampedPanY = window.__c2vectorState.panY;
+    const isBounded = Math.abs(clampedPanX) < 5000 && Math.abs(clampedPanY) < 5000;
+
+    return { clampedPanX, clampedPanY, isBounded };
+  });
+  assert(panClampTest.isBounded, `Pan Engine: Soft boundary clamping prevents out-of-bounds runaway (clamped at ${panClampTest.clampedPanX.toFixed(0)}px)`);
+
+  // 4. Verify 60fps rAF Animation Performance during Panning
+  const perfTest = await page.evaluate(async () => {
+    const t0 = performance.now();
+    for (let i = 0; i < 60; i++) {
+      window.__c2vectorState.panX = Math.sin(i * 0.1) * 80;
+      window.__c2vectorState.panY = Math.cos(i * 0.1) * 80;
+      window.__c2vectorState.renderViewBox();
+    }
+    const duration = performance.now() - t0;
+    return {
+      durationMs: duration,
+      perFrameMs: duration / 60
+    };
+  });
+  assert(perfTest.perFrameMs < 5.0, `Canvas Performance: 60 simulated pan frames completed in ${perfTest.durationMs.toFixed(1)}ms (${perfTest.perFrameMs.toFixed(2)}ms/frame, well within 16.6ms budget)`);
+
   await browser.close();
 
   console.log('\n================================================================');

@@ -499,6 +499,11 @@ async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
   ctx.drawImage(img, 0, 0, w, h);
   const imgData = ctx.getImageData(0, 0, w, h);
 
+  // Proactive memory cleanup for large uploaded images
+  canvas.width = 1;
+  canvas.height = 1;
+  img.src = '';
+
   initWorker();
   worker.postMessage({
     id: Date.now(),
@@ -666,6 +671,7 @@ function displayActiveArtboard() {
   if (!svgStr) return;
 
   viewport.innerHTML = svgStr;
+  initializeBaseViewBox();
 
   const isLogo = currentResults && currentResults.mode === 'logo';
   const metaMap = isLogo ? LOGO_ARTBOARD_METADATA : ARTBOARD_METADATA;
@@ -710,21 +716,18 @@ function updateContourOpacityInViewport() {
     contourGroup.style.opacity = targetOpacity.toFixed(2);
     contourGroup.style.visibility = targetOpacity === 0 ? 'hidden' : 'visible';
   }
-  // Also synchronize in-memory SVG string so exported SVGs & PDF match user's slider setting
-  if (currentResults && currentResults.svgs && currentResults.svgs[activeArtboard]) {
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(currentResults.svgs[activeArtboard], 'image/svg+xml');
-      const g = doc.querySelector('#chromatic-structural-contours, #chromatic-outlines');
-      if (g) {
-        g.setAttribute('opacity', targetOpacity.toFixed(2));
-        g.style.opacity = targetOpacity.toFixed(2);
-        g.style.visibility = targetOpacity === 0 ? 'hidden' : 'visible';
-        currentResults.svgs[activeArtboard] = new XMLSerializer().serializeToString(doc);
-      }
-    } catch (err) {
-      console.warn('In-memory SVG opacity sync skipped:', err);
-    }
+}
+
+function syncContourOpacityInMemory() {
+  if (!currentResults?.svgs?.[activeArtboard]) return;
+  const targetOpacity = areEdgesVisible ? currentEdgeOpacity : 0;
+  try {
+    currentResults.svgs[activeArtboard] = currentResults.svgs[activeArtboard].replace(
+      /(<g\s+id=["'](?:chromatic-structural-contours|chromatic-outlines)["'][^>]*\s+opacity=["'])[^"']*(")/,
+      `$1${targetOpacity.toFixed(2)}$2`
+    );
+  } catch (err) {
+    console.warn('In-memory SVG opacity sync skipped:', err);
   }
 }
 
@@ -735,25 +738,147 @@ edgeOpacitySlider?.addEventListener('input', (e) => {
   updateContourOpacityInViewport();
 });
 
+edgeOpacitySlider?.addEventListener('change', () => {
+  syncContourOpacityInMemory();
+});
+
 btnToggleEdges?.addEventListener('click', () => {
   areEdgesVisible = !areEdgesVisible;
   btnToggleEdges.classList.toggle('active', areEdgesVisible);
   btnToggleEdges.classList.toggle('muted', !areEdgesVisible);
   btnToggleEdges.textContent = areEdgesVisible ? 'Visible' : 'Hidden';
   updateContourOpacityInViewport();
+  syncContourOpacityInMemory();
 });
 
-// 360-Degree Pan & Zoom Transform Engine
-function applySvgTransform(animate = true) {
+// --------------------------------------------------------------------------
+// Ultra-Crisp Native SVG ViewBox Zoom & 360-Degree Pan Engine (Zero Blur)
+// --------------------------------------------------------------------------
+let baseViewBox = { minX: 0, minY: 0, width: 1000, height: 1000 };
+let animationFrameId = null;
+let rafRenderScheduled = false;
+
+function initializeBaseViewBox() {
   const svg = viewport?.querySelector('svg');
   if (!svg) return;
-  svg.style.transformOrigin = 'center center';
-  svg.style.transition = animate ? 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'none';
-  svg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
+  const vbAttr = svg.getAttribute('viewBox');
+  if (vbAttr) {
+    const parts = vbAttr.trim().split(/\s+/).map(Number);
+    if (parts.length === 4 && !parts.some(isNaN)) {
+      baseViewBox = { minX: parts[0], minY: parts[1], width: parts[2], height: parts[3] };
+      return;
+    }
+  }
+  const w = parseFloat(svg.getAttribute('width')) || (currentResults?.dimensions?.width) || 1000;
+  const h = parseFloat(svg.getAttribute('height')) || (currentResults?.dimensions?.height) || 1000;
+  baseViewBox = { minX: 0, minY: 0, width: w, height: h };
+  svg.setAttribute('viewBox', `${baseViewBox.minX} ${baseViewBox.minY} ${w} ${h}`);
+}
+
+function getClampedPan(zoom, px, py) {
+  if (zoom <= 1) return { panX: 0, panY: 0 };
+  const vpRect = viewport ? viewport.getBoundingClientRect() : { width: 800, height: 500 };
+  const vpWidth = vpRect.width || 800;
+  const vpHeight = vpRect.height || 500;
+  // Soft boundary envelope: allows full exploration across edges with 25% comfort padding
+  const maxPanX = ((zoom - 1) * vpWidth) / 2 + (vpWidth * 0.25);
+  const maxPanY = ((zoom - 1) * vpHeight) / 2 + (vpHeight * 0.25);
+  return {
+    panX: Math.max(-maxPanX, Math.min(maxPanX, px)),
+    panY: Math.max(-maxPanY, Math.min(maxPanY, py))
+  };
+}
+
+function renderViewBox() {
+  const svg = viewport?.querySelector('svg');
+  if (!svg || !baseViewBox.width || !baseViewBox.height) return;
+
+  const clamped = getClampedPan(currentZoom, panX, panY);
+  panX = clamped.panX;
+  panY = clamped.panY;
+
+  const vbW = baseViewBox.width / currentZoom;
+  const vbH = baseViewBox.height / currentZoom;
+
+  const centerX = baseViewBox.minX + baseViewBox.width / 2;
+  const centerY = baseViewBox.minY + baseViewBox.height / 2;
+
+  const vpRect = viewport.getBoundingClientRect();
+  const vpWidth = vpRect.width || baseViewBox.width;
+  const vpHeight = vpRect.height || baseViewBox.height;
+
+  // Scale factor between screen pixels and SVG coordinate units
+  const scaleFactor = Math.max(baseViewBox.width / vpWidth, baseViewBox.height / vpHeight);
+
+  const minX = (centerX - vbW / 2) - (panX * scaleFactor / currentZoom);
+  const minY = (centerY - vbH / 2) - (panY * scaleFactor / currentZoom);
+
+  // Directly adjust SVG viewBox for 100% infinite mathematical vector rendering at screen resolution
+  svg.setAttribute('viewBox', `${minX.toFixed(2)} ${minY.toFixed(2)} ${vbW.toFixed(2)} ${vbH.toFixed(2)}`);
+  svg.style.transform = 'none';
+
   if (currentZoom > 1) {
     viewport?.classList.add('can-pan');
   } else {
     viewport?.classList.remove('can-pan');
+  }
+}
+
+function scheduleRender() {
+  if (!rafRenderScheduled) {
+    rafRenderScheduled = true;
+    requestAnimationFrame(() => {
+      renderViewBox();
+      rafRenderScheduled = false;
+    });
+  }
+}
+
+function animateTo(targetZoom, targetPanX, targetPanY, duration = 250) {
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+  const startZoom = currentZoom;
+  const startPanX = panX;
+  const startPanY = panY;
+  const startTime = performance.now();
+
+  function step(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(1, elapsed / duration);
+    // Smooth organic cubic ease-out
+    const ease = 1 - Math.pow(1 - progress, 3);
+
+    currentZoom = startZoom + (targetZoom - startZoom) * ease;
+    panX = startPanX + (targetPanX - startPanX) * ease;
+    panY = startPanY + (targetPanY - startPanY) * ease;
+
+    renderViewBox();
+
+    if (progress < 1) {
+      animationFrameId = requestAnimationFrame(step);
+    } else {
+      currentZoom = targetZoom;
+      panX = targetPanX;
+      panY = targetPanY;
+      renderViewBox();
+      animationFrameId = null;
+    }
+  }
+
+  animationFrameId = requestAnimationFrame(step);
+}
+
+function applySvgTransform(animate = true) {
+  if (animate) {
+    animateTo(currentZoom, panX, panY, 250);
+  } else {
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    renderViewBox();
   }
 }
 
@@ -769,7 +894,7 @@ function resetPanAndZoom() {
   applySvgTransform(true);
 }
 
-// Expose state for telemetry and verification
+// Expose state for telemetry, benchmarks, and automated verification
 window.__c2vectorState = {
   get panX() { return panX; },
   set panX(v) { panX = v; },
@@ -777,9 +902,12 @@ window.__c2vectorState = {
   set panY(v) { panY = v; },
   get currentZoom() { return currentZoom; },
   set currentZoom(v) { currentZoom = v; },
+  get baseViewBox() { return baseViewBox; },
   applySvgTransform,
-  resetPanAndZoom
+  resetPanAndZoom,
+  renderViewBox
 };
+
 tabNav?.addEventListener('click', (e) => {
   const btn = e.target.closest('.tab-btn');
   if (!btn) return;
@@ -829,9 +957,13 @@ document.querySelectorAll('.zoom-btn[data-zoom]').forEach(btn => {
   });
 });
 
-// 360-Degree Mouse Drag Panning (All Directions)
+// 360-Degree Mouse Drag Panning (All Directions) with rAF Batching
 viewport?.addEventListener('mousedown', (e) => {
   if (currentZoom <= 1 || e.button !== 0) return;
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
   isPanning = true;
   startPointerX = e.clientX;
   startPointerY = e.clientY;
@@ -845,20 +977,24 @@ window.addEventListener('mousemove', (e) => {
   if (!isPanning) return;
   panX = initialPanX + (e.clientX - startPointerX);
   panY = initialPanY + (e.clientY - startPointerY);
-  applySvgTransform(false);
+  scheduleRender();
 });
 
 window.addEventListener('mouseup', () => {
   if (isPanning) {
     isPanning = false;
     viewport?.classList.remove('is-panning');
-    applySvgTransform(false);
+    scheduleRender();
   }
 });
 
-// 360-Degree Mobile Touch Drag Panning (Single Finger)
+// 360-Degree Mobile Touch Drag Panning (Single Finger) with rAF Batching
 viewport?.addEventListener('touchstart', (e) => {
   if (currentZoom <= 1 || e.touches.length !== 1) return;
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
   isPanning = true;
   startPointerX = e.touches[0].clientX;
   startPointerY = e.touches[0].clientY;
@@ -871,7 +1007,7 @@ viewport?.addEventListener('touchmove', (e) => {
   if (!isPanning || e.touches.length !== 1) return;
   panX = initialPanX + (e.touches[0].clientX - startPointerX);
   panY = initialPanY + (e.touches[0].clientY - startPointerY);
-  applySvgTransform(false);
+  scheduleRender();
   e.preventDefault(); // Prevent page scroll while exploring zoomed vector
 }, { passive: false });
 
@@ -882,13 +1018,13 @@ viewport?.addEventListener('touchend', () => {
   }
 });
 
-// 360-Degree Mouse Wheel Panning
+// 360-Degree Mouse Wheel Panning with rAF Batching
 viewport?.addEventListener('wheel', (e) => {
   if (currentZoom <= 1) return;
   e.preventDefault();
   panX -= e.deltaX * 0.8;
   panY -= e.deltaY * 0.8;
-  applySvgTransform(false);
+  scheduleRender();
 }, { passive: false });
 
 btnToggleGrid?.addEventListener('click', () => {

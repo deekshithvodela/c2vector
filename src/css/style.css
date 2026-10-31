@@ -938,6 +938,7 @@ main.app-main {
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   min-height: 440px;
   max-height: 600px;
   display: flex;
@@ -963,20 +964,13 @@ main.app-main {
 }
 
 .viewport-canvas svg {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 560px;
-  height: auto;
   margin: auto;
   display: block;
-  transform-origin: center center;
-  will-change: transform;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.25));
   pointer-events: none;
-}
-
-.viewport-canvas.is-panning svg {
-  transition: none !important;
 }
 
 /* --------------------------------------------------------------------------
