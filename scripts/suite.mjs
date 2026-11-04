@@ -237,6 +237,43 @@ export async function runTestSuite() {
   const photoPathsCount = await page.$$eval('#viewport svg path', els => els.length);
   assert(photoPathsCount >= 4, `Photo Mode: Renders rich multi-tier layers (${photoPathsCount} paths)`);
 
+  // --- SECTION 3b: PHOTO MODE TRANSPARENT INGESTION & GRID KNOCKOUT ---
+  console.log('\n--- 3b. Photo Mode Transparent Ingestion & Grid Knockout ---');
+  const photoTransparentTest = await page.evaluate(async () => {
+    // Create transparent PNG canvas: 300x100 transparent with red and blue photo bars
+    const c = document.createElement('canvas');
+    c.width = 300;
+    c.height = 100;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(20, 20, 100, 60);
+    ctx.fillStyle = '#2563eb';
+    ctx.fillRect(150, 20, 100, 60);
+    const idata = ctx.getImageData(0, 0, 300, 100);
+
+    const { runVectorizationPipeline } = await import('/c2vector/src/js/engine/pipeline.js');
+    const res = await runVectorizationPipeline(idata.data, 300, 100, { tiers: 16 });
+
+    const masterTransparent = res.transparentSvgs.masterVibrant;
+    const masterSolid = res.solidSvgs.masterVibrant;
+
+    return {
+      mode: res.mode,
+      isTransparentImage: res.isTransparentImage,
+      isTransparentLogo: res.isTransparentLogo,
+      knockoutBackground: res.knockoutBackground,
+      transparentHasRect: masterTransparent.includes('<rect'),
+      solidHasRect: masterSolid.includes('<rect'),
+      activeHasRect: res.svgs.masterVibrant.includes('<rect')
+    };
+  });
+
+  assert(photoTransparentTest.mode === 'photo', 'Photo Mode Transparent: Stays in Photo Mode without auto-redirection');
+  assert(photoTransparentTest.isTransparentImage === true, 'Photo Mode Transparent: Detects alpha transparency');
+  assert(!photoTransparentTest.transparentHasRect, 'Photo Mode Transparent: transparentSvgs has zero <rect> tags');
+  assert(photoTransparentTest.solidHasRect, 'Photo Mode Transparent: solidSvgs has substrate plate <rect>');
+  assert(!photoTransparentTest.activeHasRect, 'Photo Mode Transparent: Default active vector renders transparent background');
+
   // --- SECTION 4: LOGO MODE VECTOR ENGINE & 8-TONE COLOR ROBUSTNESS ---
   console.log('\n--- 4. Logo Mode Spot-Color Engine & 8-Tone Robustness ---');
 
@@ -619,6 +656,136 @@ export async function runTestSuite() {
     };
   });
   assert(perfTest.perFrameMs < 5.0, `Canvas Performance: 60 simulated pan frames completed in ${perfTest.durationMs.toFixed(1)}ms (${perfTest.perFrameMs.toFixed(2)}ms/frame, well within 16.6ms budget)`);
+
+  // --- SECTION 9: TRUE VECTOR SVG PATHS & STANDALONE SVG 1.1 EXPORT VALIDATION ---
+  console.log('\n--- Section 9: True Vector SVG Paths & Standalone SVG 1.1 Export Validation ---');
+
+  const vectorPathAudit = await page.evaluate(async () => {
+    const { runVectorizationPipeline } = await import('/c2vector/src/js/engine/pipeline.js');
+    const { runLogoVectorizationPipeline } = await import('/c2vector/src/js/engine/logo-engine.js');
+    const { formatDownloadableSvg } = window.__c2vectorState;
+
+    // Create a 160x160 sample graphic with circles and nested donut holes
+    const c = document.createElement('canvas');
+    c.width = 160;
+    c.height = 160;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 160, 160);
+    // Draw outer circle with donut hole
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(80, 80, 60, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(80, 80, 30, 0, Math.PI * 2);
+    ctx.fill();
+    // Draw red inner dot
+    ctx.fillStyle = '#e11d48';
+    ctx.beginPath();
+    ctx.arc(80, 80, 15, 0, Math.PI * 2);
+    ctx.fill();
+
+    const idata = ctx.getImageData(0, 0, 160, 160);
+
+    const photoRes = await runVectorizationPipeline(idata.data, 160, 160, { tiers: 8 });
+    const logoRes = await runLogoVectorizationPipeline(idata.data, 160, 160, { maxColors: 8 });
+
+    function auditPaths(svgsObj, label) {
+      let totalPaths = 0;
+      let closedPaths = 0;
+      let openPaths = 0;
+      let compoundPaths = 0;
+      let validCompoundClosures = 0;
+      let hasEmbeddedRaster = false;
+      let nanOrUndefinedCoords = 0;
+
+      for (const [key, svg] of Object.entries(svgsObj)) {
+        if (!svg) continue;
+        if (/<image[\s>]|data:image\//i.test(svg)) hasEmbeddedRaster = true;
+
+        const dMatches = Array.from(svg.matchAll(/\sd="([^"]*)"/g)).map(m => m[1]);
+        for (const d of dMatches) {
+          if (!d || d.trim().length === 0) continue;
+          totalPaths++;
+
+          // Check if path ends with Z or z
+          if (/[Zz]\s*$/.test(d)) {
+            closedPaths++;
+          } else {
+            openPaths++;
+          }
+
+          // Check compound paths (multiple M commands)
+          const mMatches = d.match(/[Mm]/g) || [];
+          if (mMatches.length > 1) {
+            compoundPaths++;
+            // In compound paths, every subpath before a new M must end with Z
+            const subpaths = d.split(/[Mm]\s+/).slice(1);
+            const allSubpathsClosed = subpaths.every(sp => /[Zz]/.test(sp));
+            if (allSubpathsClosed) {
+              validCompoundClosures++;
+            }
+          }
+
+          // Check for NaN or undefined in coordinates
+          if (/NaN|undefined/.test(d)) {
+            nanOrUndefinedCoords++;
+          }
+        }
+      }
+
+      return {
+        label,
+        totalPaths,
+        closedPaths,
+        openPaths,
+        compoundPaths,
+        validCompoundClosures,
+        hasEmbeddedRaster,
+        nanOrUndefinedCoords
+      };
+    }
+
+    const photoAudit = auditPaths(photoRes.svgs, 'Photo Mode');
+    const logoAudit = auditPaths(logoRes.svgs, 'Logo Mode');
+
+    // Test formatDownloadableSvg standalone export formatting
+    const rawSampleSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#000" d="M 10 10 L 90 10 L 90 90 Z"/></svg>';
+    const exportedSvg = formatDownloadableSvg(rawSampleSvg);
+
+    const hasXmlHeader = exportedSvg.startsWith('<?xml version="1.0" encoding="UTF-8" standalone="no"?>');
+    const hasDoctype = exportedSvg.includes('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">');
+    const hasVersion11 = exportedSvg.includes('version="1.1"');
+    const hasXlink = exportedSvg.includes('xmlns:xlink="http://www.w3.org/1999/xlink"');
+
+    return {
+      photoAudit,
+      logoAudit,
+      exportCheck: {
+        hasXmlHeader,
+        hasDoctype,
+        hasVersion11,
+        hasXlink
+      }
+    };
+  });
+
+  assert(vectorPathAudit.photoAudit.totalPaths > 0, `Photo Mode: Traced ${vectorPathAudit.photoAudit.totalPaths} valid geometric vector paths across artboards`);
+  assert(vectorPathAudit.photoAudit.openPaths === 0, 'Photo Mode: 100% of paths strictly closed with Z (0 open polylines)');
+  assert(vectorPathAudit.photoAudit.compoundPaths > 0 && vectorPathAudit.photoAudit.compoundPaths === vectorPathAudit.photoAudit.validCompoundClosures, `Photo Mode: All ${vectorPathAudit.photoAudit.compoundPaths} compound paths with hole cutouts strictly close each subpath with Z before M`);
+
+  assert(vectorPathAudit.logoAudit.totalPaths > 0, `Logo Mode: Traced ${vectorPathAudit.logoAudit.totalPaths} valid geometric vector paths across artboards`);
+  assert(vectorPathAudit.logoAudit.openPaths === 0, 'Logo Mode: 100% of paths strictly closed with Z (0 open polylines)');
+  assert(vectorPathAudit.logoAudit.compoundPaths > 0 && vectorPathAudit.logoAudit.compoundPaths === vectorPathAudit.logoAudit.validCompoundClosures, `Logo Mode: All ${vectorPathAudit.logoAudit.compoundPaths} compound paths with hole cutouts strictly close each subpath with Z before M`);
+
+  assert(!vectorPathAudit.photoAudit.hasEmbeddedRaster && !vectorPathAudit.logoAudit.hasEmbeddedRaster, 'Vector Purity: 0 embedded raster <image> or base64 tags across all modes');
+  assert(vectorPathAudit.photoAudit.nanOrUndefinedCoords === 0 && vectorPathAudit.logoAudit.nanOrUndefinedCoords === 0, 'Vector Coordinates: Zero NaN or undefined coordinate values');
+
+  assert(vectorPathAudit.exportCheck.hasXmlHeader, 'SVG Export: Downloadable SVG includes standard <?xml version="1.0" encoding="UTF-8" standalone="no"?> declaration');
+  assert(vectorPathAudit.exportCheck.hasDoctype, 'SVG Export: Downloadable SVG includes official W3C SVG 1.1 DTD preamble for Canva/Illustrator compatibility');
+  assert(vectorPathAudit.exportCheck.hasVersion11 && vectorPathAudit.exportCheck.hasXlink, 'SVG Export: Root <svg> declares version="1.1" and xmlns:xlink namespace');
 
   await browser.close();
 

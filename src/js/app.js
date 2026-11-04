@@ -493,29 +493,10 @@ async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   
-  // Draw raw image to inspect native alpha channels
+  // Draw raw image preserving native alpha channels
   ctx.drawImage(img, 0, 0, w, h);
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
-
-  // Inspect alpha channel across image pixels
-  let transparentPixelCount = 0;
-  const totalPixels = w * h;
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i] < 250) {
-      transparentPixelCount++;
-    }
-  }
-
-  // If > 0.2% of pixels are transparent, image has transparent background
-  const hasAlphaTransparency = (transparentPixelCount / totalPixels) >= 0.002;
-  let effectiveMode = mode;
-
-  if (hasAlphaTransparency) {
-    // Automatically switch to logo mode for dedicated spot-color vectorization and background transparency
-    effectiveMode = 'logo';
-    setEngineMode('logo');
-  }
 
   // Proactive memory cleanup for large uploaded images
   canvas.width = 1;
@@ -529,8 +510,8 @@ async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
     width: w,
     height: h,
     options: {
-      mode: effectiveMode,
-      tiers: effectiveMode === 'logo' ? 32 : 48,
+      mode: mode,
+      tiers: mode === 'logo' ? 32 : 48,
       maxColors: 32
     }
   });
@@ -680,7 +661,7 @@ function renderWorkbench(results) {
   }
 
   // Initialize background knockout & grid state based on detected transparency
-  isGridOn = Boolean(results.isTransparentLogo || results.knockoutBackground);
+  isGridOn = Boolean(results.isTransparentLogo || results.isTransparentImage || results.knockoutBackground);
   if (btnToggleGrid) {
     btnToggleGrid.classList.toggle('active', isGridOn);
     btnToggleGrid.setAttribute('aria-pressed', isGridOn ? 'true' : 'false');
@@ -946,7 +927,8 @@ window.__c2vectorState = {
   get baseViewBox() { return baseViewBox; },
   applySvgTransform,
   resetPanAndZoom,
-  renderViewBox
+  renderViewBox,
+  formatDownloadableSvg
 };
 
 tabNav?.addEventListener('click', (e) => {
@@ -1094,9 +1076,31 @@ btnCenterCanvas?.addEventListener('click', () => {
 });
 
 // Export Triggers
+/**
+ * Formats an SVG string into an official, standalone SVG 1.1 vector document
+ * Complete with XML declaration and W3C SVG 1.1 DTD preamble for 100% vector fidelity in
+ * Adobe Illustrator, CorelDRAW, Inkscape, Figma, Canva, and CNC/laser plotters.
+ */
+export function formatDownloadableSvg(svgStr) {
+  if (!svgStr) return '';
+  let clean = svgStr.trim();
+  // Strip any pre-existing XML declaration or DOCTYPE to prevent duplication
+  clean = clean.replace(/<\?xml[\s\S]*?\?>\s*/gi, '');
+  clean = clean.replace(/<!DOCTYPE[\s\S]*?>\s*/gi, '');
+  // Ensure version="1.1" and xmlns:xlink namespace are present on root <svg>
+  if (!clean.includes('version=')) {
+    clean = clean.replace('<svg ', '<svg version="1.1" ');
+  }
+  if (!clean.includes('xmlns:xlink=')) {
+    clean = clean.replace('<svg ', '<svg xmlns:xlink="http://www.w3.org/1999/xlink" ');
+  }
+  return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${clean}\n`;
+}
+
 btnDownloadSvg?.addEventListener('click', () => {
   if (!currentResults) return;
-  const svgStr = currentResults.svgs[activeArtboard];
+  const rawSvg = currentResults.svgs[activeArtboard];
+  const svgStr = formatDownloadableSvg(rawSvg);
   const isLogo = currentResults && currentResults.mode === 'logo';
   const metaMap = isLogo ? LOGO_ARTBOARD_METADATA : ARTBOARD_METADATA;
   const meta = metaMap[activeArtboard] || { filename: `${activeArtboard}.svg` };
@@ -1140,8 +1144,9 @@ btnDownloadAllSvg?.addEventListener('click', async () => {
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
     const meta = metaMap[key] || { filename: `${key}.svg` };
-    const svgStr = currentResults.svgs[key];
-    if (!svgStr) continue;
+    const rawSvg = currentResults.svgs[key];
+    if (!rawSvg) continue;
+    const svgStr = formatDownloadableSvg(rawSvg);
 
     const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);

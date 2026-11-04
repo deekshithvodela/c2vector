@@ -173,6 +173,7 @@ var require_utils = __commonJS({
             );
           }
         });
+        path.push("Z");
         return path.join(" ");
       },
       bezier: function bezier(t, p0, p1, p2, p3) {

@@ -25,13 +25,43 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     : resampleBicubic(rawPixels, rawWidth, rawHeight, targetHDWidth, targetHDHeight);
   const cleanPixels = bilateralDenoise(hdPixels, targetHDWidth, targetHDHeight, 1.5, 22.0);
 
+  // Detect canvas perimeter and overall alpha transparency
+  let transparentBorderCount = 0;
+  let totalBorderCount = 0;
+  const totalPixels = targetHDWidth * targetHDHeight;
+  let transparentPixelCount = 0;
+
+  for (let x = 0; x < targetHDWidth; x++) {
+    const topIdx = (x) * 4;
+    const botIdx = ((targetHDHeight - 1) * targetHDWidth + x) * 4;
+    for (const idx of [topIdx, botIdx]) {
+      totalBorderCount++;
+      if (cleanPixels[idx + 3] < 64) transparentBorderCount++;
+    }
+  }
+  for (let y = 0; y < targetHDHeight; y++) {
+    const leftIdx = (y * targetHDWidth) * 4;
+    const rightIdx = (y * targetHDWidth + targetHDWidth - 1) * 4;
+    for (const idx of [leftIdx, rightIdx]) {
+      totalBorderCount++;
+      if (cleanPixels[idx + 3] < 64) transparentBorderCount++;
+    }
+  }
+
+  for (let i = 3; i < cleanPixels.length; i += 4) {
+    if (cleanPixels[i] < 64) transparentPixelCount++;
+  }
+
+  const isTransparent = (totalBorderCount > 0 && (transparentBorderCount / totalBorderCount) >= 0.10) ||
+                        ((transparentPixelCount / totalPixels) >= 0.005);
+
   // STEP 2: TONAL STUDIES (Universal Discrete Grayscale Print Specifications)
   progressCallback({ step: 2, name: 'Monochrome, Posterize & Stencil Studies', pct: 35 });
   const otsuThreshold = computeOtsuThreshold(cleanPixels, targetHDWidth, targetHDHeight);
   const monoMap = generateMonochromeMap(cleanPixels, targetHDWidth, targetHDHeight, otsuThreshold);
   const stencilMap = generateBridgeStencilMap(monoMap, targetHDWidth, targetHDHeight, 3, 48);
 
-  // Compute 4-Tone Grayscale Masks: #000000 (base), #4a4a4a, #a8a8a8, #ffffff
+  // Compute 4-Tone Grayscale Masks: #000000 (base), #4a4a4a, #a8a8a8, #ffffff (ignoring transparent pixels)
   const p4Colors = ['#000000', '#4a4a4a', '#a8a8a8', '#ffffff'];
   const p4InvColors = ['#ffffff', '#b5b5b5', '#575757', '#000000'];
   const p4Masks = [
@@ -41,6 +71,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     new Uint8Array(targetHDWidth * targetHDHeight)
   ];
   for (let i = 0, p = 0; i < cleanPixels.length; i += 4, p++) {
+    if (cleanPixels[i + 3] < 64) continue;
     const lum = computeLuminance(cleanPixels[i], cleanPixels[i + 1], cleanPixels[i + 2]);
     const tIdx = Math.min(3, Math.floor(lum / 64));
     p4Masks[tIdx][p] = 1;
@@ -60,11 +91,12 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     turdSize: 16
   }));
 
-  // Compute 8-Tone Grayscale Masks
+  // Compute 8-Tone Grayscale Masks (ignoring transparent pixels)
   const p8Colors = ['#000000', '#222222', '#444444', '#666666', '#888888', '#aaaaaa', '#cccccc', '#ffffff'];
   const p8InvColors = ['#ffffff', '#dddddd', '#bbbbbb', '#999999', '#777777', '#555555', '#333333', '#000000'];
   const p8Masks = Array.from({ length: 8 }, () => new Uint8Array(targetHDWidth * targetHDHeight));
   for (let i = 0, p = 0; i < cleanPixels.length; i += 4, p++) {
+    if (cleanPixels[i + 3] < 64) continue;
     const lum = computeLuminance(cleanPixels[i], cleanPixels[i + 1], cleanPixels[i + 2]);
     const tIdx = Math.min(7, Math.floor(lum / 32));
     p8Masks[tIdx][p] = 1;
@@ -84,24 +116,36 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     turdSize: 14
   }));
 
-  // Build Study SVGs
-  const monoSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', '#ffffff', monoMap);
-  const stencilSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', '#ffffff', stencilMap);
-  const poster4Svg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4Layers, '#000000');
-  const poster4InvSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4InvLayers, '#ffffff');
-  const poster8Svg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8Layers, '#000000');
-  const poster8InvSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8InvLayers, '#ffffff');
+  // Build Study SVGs (Dual Solid & Transparent Variants)
+  const monoSolidSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', '#ffffff', monoMap);
+  const monoTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', null, monoMap);
+
+  const stencilSolidSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', '#ffffff', stencilMap);
+  const stencilTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', null, stencilMap);
+
+  const poster4SolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4Layers, '#000000');
+  const poster4TransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4Layers, null);
+
+  const poster4InvSolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4InvLayers, '#ffffff');
+  const poster4InvTransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4InvLayers, null);
+
+  const poster8SolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8Layers, '#000000');
+  const poster8TransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8Layers, null);
+
+  const poster8InvSolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8InvLayers, '#ffffff');
+  const poster8InvTransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8InvLayers, null);
 
   // STEP 3: DEPTH ESTIMATION & HAIRLINE EDGES
   progressCallback({ step: 3, name: 'Canny Hairline Edges & Focus Depth Map', pct: 55 });
   const cannyEdges = computeCannyEdges(cleanPixels, targetHDWidth, targetHDHeight, 20, 60);
 
-  // Sub-pixel Canny Hairline Edge Mask
+  // Sub-pixel Canny Hairline Edge Mask (excluding transparent pixels)
   const edgeMask = new Uint8Array(targetHDWidth * targetHDHeight);
   for (let i = 0; i < cannyEdges.length; i++) {
-    if (cannyEdges[i] === 255) edgeMask[i] = 1;
+    if (cannyEdges[i] === 255 && cleanPixels[i * 4 + 3] >= 64) edgeMask[i] = 1;
   }
-  const cannySvg = buildStudySvg(targetHDWidth, targetHDHeight, '#38bdf8', '#090d16', edgeMask, { turdSize: 4 });
+  const cannySolidSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#38bdf8', '#090d16', edgeMask, { turdSize: 4 });
+  const cannyTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#38bdf8', null, edgeMask, { turdSize: 4 });
 
   // STEP 4: COLOR QUANTIZATION & TONE MATCH INDEX
   progressCallback({ step: 4, name: 'Color Quantization & Tone Match Index', pct: 75 });
@@ -112,7 +156,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   for (let t = 0; t < palette.length; t++) {
     const mask = new Uint8Array(targetHDWidth * targetHDHeight);
     for (let i = 0; i < tierIndices.length; i++) {
-      if (tierIndices[i] === t) mask[i] = 1;
+      if (cleanPixels[i * 4 + 3] >= 64 && tierIndices[i] === t) mask[i] = 1;
     }
     tierMasks.push(mask);
   }
@@ -268,12 +312,17 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     }
   }
 
-  // Build Standalone Chromatic Edges Study SVG
-  let chromaticSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${targetHDWidth} ${targetHDHeight}" width="${targetHDWidth}" height="${targetHDHeight}">\n  <rect width="${targetHDWidth}" height="${targetHDHeight}" fill="#090d16"/>\n  <g id="chromatic-outlines" opacity="0.75">\n`;
+  // Default substrate color for solid vector underlays
+  const defaultSubstrate = isTransparent ? '#ffffff' : (palette[0] ? palette[0].hex : '#000000');
+
+  // Build Standalone Chromatic Edges Study SVG (Solid & Transparent)
+  let chromaticInner = '  <g id="chromatic-outlines" opacity="0.75">\n';
   for (const edge of chromaticEdgePaths) {
-    chromaticSvg += `    <!-- ${edge.name} -->\n    <path id="${edge.id}" fill="${edge.color}" fill-rule="evenodd" d="${edge.d}"/>\n`;
+    chromaticInner += `    <!-- ${edge.name} -->\n    <path id="${edge.id}" fill="${edge.color}" fill-rule="evenodd" d="${edge.d}"/>\n`;
   }
-  chromaticSvg += '  </g>\n</svg>';
+  chromaticInner += '  </g>\n';
+  const chromaticSolidSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${targetHDWidth} ${targetHDHeight}" width="${targetHDWidth}" height="${targetHDHeight}">\n  <rect width="${targetHDWidth}" height="${targetHDHeight}" fill="#090d16"/>\n${chromaticInner}</svg>`;
+  const chromaticTransparentSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${targetHDWidth} ${targetHDHeight}" width="${targetHDWidth}" height="${targetHDHeight}">\n${chromaticInner}</svg>`;
 
   // Color Posterized Print Plate (8-10 Bold Graphic Color Fields)
   const posterColorPalette = quantizePalette(cleanPixels, 8);
@@ -282,7 +331,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   for (let t = 0; t < posterColorPalette.length; t++) {
     const mask = new Uint8Array(targetHDWidth * targetHDHeight);
     for (let i = 0; i < posterIndices.length; i++) {
-      if (posterIndices[i] === t) mask[i] = 1;
+      if (cleanPixels[i * 4 + 3] >= 64 && posterIndices[i] === t) mask[i] = 1;
     }
     posterLayers.push({
       name: `Color-Poster-Tier-${t}`,
@@ -292,7 +341,8 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     });
   }
   const posterBaseColor = posterColorPalette[0] ? posterColorPalette[0].hex : '#000000';
-  const posterColorSvg = buildColorPosterizeSvg(targetHDWidth, targetHDHeight, posterLayers, posterBaseColor);
+  const posterColorSolidSvg = buildColorPosterizeSvg(targetHDWidth, targetHDHeight, posterLayers, posterBaseColor);
+  const posterColorTransparentSvg = buildColorPosterizeSvg(targetHDWidth, targetHDHeight, posterLayers, null);
 
   // Seamless Pixel-Match Vector (Anti-Grid Architecture)
   // 2D contiguous polygon boundary fusion & sub-pixel Potrace curve fitting
@@ -307,34 +357,49 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     });
   }
   const pixelMatchBaseColor = palette[0] ? palette[0].hex : '#000000';
-  const pixelMatchSvg = buildSeamlessPixelMatchSvg(targetHDWidth, targetHDHeight, pixelMatchLayers, pixelMatchBaseColor);
+  const pixelMatchSolidSvg = buildSeamlessPixelMatchSvg(targetHDWidth, targetHDHeight, pixelMatchLayers, pixelMatchBaseColor);
+  const pixelMatchTransparentSvg = buildSeamlessPixelMatchSvg(targetHDWidth, targetHDHeight, pixelMatchLayers, null);
 
   // STEP 6: BUILD ALL STANDALONE SVG DELIVERABLES
-  const masterFaithfulSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths);
-  const masterVibrantSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths);
+  const masterFaithfulSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, defaultSubstrate);
+  const masterFaithfulTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, null);
+
+  const masterVibrantSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, defaultSubstrate);
+  const masterVibrantTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, null);
 
   progressCallback({ step: 6, name: 'Complete', pct: 100 });
 
   const solidSvgs = {
-    masterVibrant: masterVibrantSvg,
-    masterFaithful: masterFaithfulSvg,
-    posterizeColor: posterColorSvg,
-    pixelMatch: pixelMatchSvg,
-    monochrome: monoSvg,
-    stencil: stencilSvg,
-    posterize4: poster4Svg,
-    posterize4Inverted: poster4InvSvg,
-    posterize8: poster8Svg,
-    posterize8Inverted: poster8InvSvg,
-    cannyEdges: cannySvg,
-    chromaticEdges: chromaticSvg
+    masterVibrant: masterVibrantSolidSvg,
+    masterFaithful: masterFaithfulSolidSvg,
+    posterizeColor: posterColorSolidSvg,
+    pixelMatch: pixelMatchSolidSvg,
+    monochrome: monoSolidSvg,
+    stencil: stencilSolidSvg,
+    posterize4: poster4SolidSvg,
+    posterize4Inverted: poster4InvSolidSvg,
+    posterize8: poster8SolidSvg,
+    posterize8Inverted: poster8InvSolidSvg,
+    cannyEdges: cannySolidSvg,
+    chromaticEdges: chromaticSolidSvg
   };
 
-  const stripBg = s => s ? s.replace(/<rect\s+[^>]*fill=["'][^"']+["'][^>]*\/>\s*/i, '') : s;
-  const transparentSvgs = {};
-  for (const [k, v] of Object.entries(solidSvgs)) {
-    transparentSvgs[k] = stripBg(v);
-  }
+  const transparentSvgs = {
+    masterVibrant: masterVibrantTransparentSvg,
+    masterFaithful: masterFaithfulTransparentSvg,
+    posterizeColor: posterColorTransparentSvg,
+    pixelMatch: pixelMatchTransparentSvg,
+    monochrome: monoTransparentSvg,
+    stencil: stencilTransparentSvg,
+    posterize4: poster4TransparentSvg,
+    posterize4Inverted: poster4InvTransparentSvg,
+    posterize8: poster8TransparentSvg,
+    posterize8Inverted: poster8InvTransparentSvg,
+    cannyEdges: cannyTransparentSvg,
+    chromaticEdges: chromaticTransparentSvg
+  };
+
+  const activeSvgs = isTransparent ? transparentSvgs : solidSvgs;
 
   return {
     mode: 'photo',
@@ -344,8 +409,9 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     palette,
     vibrantPalette,
     tmiReport,
-    isTransparentLogo: false,
-    knockoutBackground: false,
+    isTransparentLogo: isTransparent,
+    isTransparentImage: isTransparent,
+    knockoutBackground: isTransparent,
     stepsTelemetry: {
       step1: { rawW: rawWidth, rawH: rawHeight, hdW: targetHDWidth, hdH: targetHDHeight, scale: (targetHDWidth / rawWidth).toFixed(2) },
       step2: { otsuThreshold, studiesCount: 6 },
@@ -354,7 +420,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
       step5: { continuity: 'G1 Continuity', opacityRange: '70%–80% Glaze', blackInk: '0.00% (Strictly Non-Black)' },
       step6: { fidelityTarget: '90–95%+', pdfCompiler: 'jsPDF + svg2pdf (0 Rasters)' }
     },
-    svgs: solidSvgs,
+    svgs: activeSvgs,
     solidSvgs,
     transparentSvgs
   };

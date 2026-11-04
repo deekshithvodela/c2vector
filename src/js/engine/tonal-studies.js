@@ -10,12 +10,16 @@ import { computeLuminance } from './image-ops.js';
  */
 export function computeOtsuThreshold(pixels, width, height) {
   const histogram = new Int32Array(256);
-  const total = width * height;
+  let opaqueCount = 0;
 
   for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3] < 64) continue; // Ignore transparent pixels
     const lum = Math.round(computeLuminance(pixels[i], pixels[i + 1], pixels[i + 2]));
     histogram[lum]++;
+    opaqueCount++;
   }
+
+  const total = opaqueCount > 0 ? opaqueCount : (width * height);
 
   let sum = 0;
   for (let t = 0; t < 256; t++) sum += t * histogram[t];
@@ -51,6 +55,10 @@ export function computeOtsuThreshold(pixels, width, height) {
 export function generateMonochromeMap(pixels, width, height, threshold) {
   const map = new Uint8Array(width * height);
   for (let i = 0, p = 0; i < pixels.length; i += 4, p++) {
+    if (pixels[i + 3] < 64) {
+      map[p] = 0;
+      continue;
+    }
     const lum = computeLuminance(pixels[i], pixels[i + 1], pixels[i + 2]);
     map[p] = lum >= threshold ? 255 : 0;
   }

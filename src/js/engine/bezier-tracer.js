@@ -30,12 +30,13 @@ export function traceBinaryMask(mask, width, height, options = {}) {
  * Builds Full Master Vector SVG string with continuous Bézier tiers and translucent chromatic contours
  * Universal Continuous Discrete Vector Tier Production Print Specifications
  */
-export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges = null) {
+export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges = null, bgHex = null) {
   let body = '';
 
-  // 1. Solid background base underlay path (Tier 0 darkest color) preventing sub-pixel seam light leaks
-  const bgHex = palette[0] ? palette[0].hex : '#000000';
-  body += `  <rect width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  // 1. Solid background base underlay path preventing sub-pixel seam light leaks (omitted for transparent background)
+  if (bgHex) {
+    body += `  <rect width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  }
 
   // 2. Render color tiers in tonal order (darkest to lightest)
   body += '  <!-- Continuous Bézier Color Tiers (G1 Continuity, Zero Pixel Stairs) -->\n';
@@ -157,11 +158,13 @@ export function buildColorPosterizeSvg(width, height, layers, bgHex = null) {
  * 2D contiguous polygon boundary fusion, sub-pixel Potrace curve fitting, and solid underlay
  * Completely eliminates rectangular scanline bricks, grid staircases, and inter-pixel white seams
  */
-export function buildSeamlessPixelMatchSvg(width, height, layers, bgHex) {
+export function buildSeamlessPixelMatchSvg(width, height, layers, bgHex = null) {
   let body = '';
   // 1. Solid underlay eliminates 100% of inter-polygon anti-aliasing white seam lines
-  body += `  <!-- Solid Base Underlay: Eliminates 100% of sub-pixel grid lines and seam light bleed -->\n`;
-  body += `  <rect id="pixel-match-base-underlay" width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  if (bgHex) {
+    body += `  <!-- Solid Base Underlay: Eliminates 100% of sub-pixel grid lines and seam light bleed -->\n`;
+    body += `  <rect id="pixel-match-base-underlay" width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  }
 
   // 2. Continuous Bézier Color Zones (G1 Tangent Continuity, Zero Rectangular Bricks)
   body += '  <!-- Continuous Sub-Pixel Color Zones (Seamless Anti-Grid Architecture) -->\n';
