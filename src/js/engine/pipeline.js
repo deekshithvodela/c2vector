@@ -315,13 +315,37 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
 
   progressCallback({ step: 6, name: 'Complete', pct: 100 });
 
+  const solidSvgs = {
+    masterVibrant: masterVibrantSvg,
+    masterFaithful: masterFaithfulSvg,
+    posterizeColor: posterColorSvg,
+    pixelMatch: pixelMatchSvg,
+    monochrome: monoSvg,
+    stencil: stencilSvg,
+    posterize4: poster4Svg,
+    posterize4Inverted: poster4InvSvg,
+    posterize8: poster8Svg,
+    posterize8Inverted: poster8InvSvg,
+    cannyEdges: cannySvg,
+    chromaticEdges: chromaticSvg
+  };
+
+  const stripBg = s => s ? s.replace(/<rect\s+[^>]*fill=["'][^"']+["'][^>]*\/>\s*/i, '') : s;
+  const transparentSvgs = {};
+  for (const [k, v] of Object.entries(solidSvgs)) {
+    transparentSvgs[k] = stripBg(v);
+  }
+
   return {
+    mode: 'photo',
     dimensions: { width: targetHDWidth, height: targetHDHeight },
     rawDimensions: { width: rawWidth, height: rawHeight },
     tiers: palette.length,
     palette,
     vibrantPalette,
     tmiReport,
+    isTransparentLogo: false,
+    knockoutBackground: false,
     stepsTelemetry: {
       step1: { rawW: rawWidth, rawH: rawHeight, hdW: targetHDWidth, hdH: targetHDHeight, scale: (targetHDWidth / rawWidth).toFixed(2) },
       step2: { otsuThreshold, studiesCount: 6 },
@@ -330,19 +354,8 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
       step5: { continuity: 'G1 Continuity', opacityRange: '70%–80% Glaze', blackInk: '0.00% (Strictly Non-Black)' },
       step6: { fidelityTarget: '90–95%+', pdfCompiler: 'jsPDF + svg2pdf (0 Rasters)' }
     },
-    svgs: {
-      masterVibrant: masterVibrantSvg,
-      masterFaithful: masterFaithfulSvg,
-      posterizeColor: posterColorSvg,
-      pixelMatch: pixelMatchSvg,
-      monochrome: monoSvg,
-      stencil: stencilSvg,
-      posterize4: poster4Svg,
-      posterize4Inverted: poster4InvSvg,
-      posterize8: poster8Svg,
-      posterize8Inverted: poster8InvSvg,
-      cannyEdges: cannySvg,
-      chromaticEdges: chromaticSvg
-    }
+    svgs: solidSvgs,
+    solidSvgs,
+    transparentSvgs
   };
 }

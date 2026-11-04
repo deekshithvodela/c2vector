@@ -661,6 +661,22 @@ function renderWorkbench(results) {
     });
   }
 
+  // Initialize background knockout & grid state based on detected transparency
+  isGridOn = Boolean(results.isTransparentLogo || results.knockoutBackground);
+  if (btnToggleGrid) {
+    btnToggleGrid.classList.toggle('active', isGridOn);
+    btnToggleGrid.setAttribute('aria-pressed', isGridOn ? 'true' : 'false');
+    btnToggleGrid.title = isGridOn
+      ? 'Background removed: Transparent SVG (Click to restore solid background)'
+      : 'Solid background (Click to remove background for transparent SVG)';
+  }
+  if (viewport) {
+    viewport.classList.toggle('grid-pattern', isGridOn);
+  }
+  if (results.transparentSvgs && results.solidSvgs) {
+    results.svgs = isGridOn ? results.transparentSvgs : results.solidSvgs;
+  }
+
   // Display default artboard
   displayActiveArtboard();
 }
@@ -672,6 +688,10 @@ function displayActiveArtboard() {
 
   viewport.innerHTML = svgStr;
   initializeBaseViewBox();
+
+  if (viewport) {
+    viewport.classList.toggle('grid-pattern', isGridOn);
+  }
 
   const isLogo = currentResults && currentResults.mode === 'logo';
   const metaMap = isLogo ? LOGO_ARTBOARD_METADATA : ARTBOARD_METADATA;
@@ -902,6 +922,9 @@ window.__c2vectorState = {
   set panY(v) { panY = v; },
   get currentZoom() { return currentZoom; },
   set currentZoom(v) { currentZoom = v; },
+  get isGridOn() { return isGridOn; },
+  set isGridOn(v) { isGridOn = v; },
+  get currentResults() { return currentResults; },
   get baseViewBox() { return baseViewBox; },
   applySvgTransform,
   resetPanAndZoom,
@@ -1028,9 +1051,20 @@ viewport?.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 btnToggleGrid?.addEventListener('click', () => {
+  if (!currentResults) return;
   isGridOn = !isGridOn;
-  viewport.classList.toggle('grid-pattern', isGridOn);
   btnToggleGrid.classList.toggle('active', isGridOn);
+  btnToggleGrid.setAttribute('aria-pressed', isGridOn ? 'true' : 'false');
+  btnToggleGrid.title = isGridOn
+    ? 'Background removed: Transparent SVG (Click to restore solid background)'
+    : 'Solid background (Click to remove background for transparent SVG)';
+
+  viewport.classList.toggle('grid-pattern', isGridOn);
+
+  if (currentResults.transparentSvgs && currentResults.solidSvgs) {
+    currentResults.svgs = isGridOn ? currentResults.transparentSvgs : currentResults.solidSvgs;
+  }
+  displayActiveArtboard();
 });
 
 btnCenterCanvas?.addEventListener('click', () => {
@@ -1082,10 +1116,12 @@ btnDownloadPdf?.addEventListener('click', async () => {
 btnDownloadAllSvg?.addEventListener('click', async () => {
   if (!currentResults) return;
   const keys = Object.keys(currentResults.svgs);
+  const isLogo = currentResults && currentResults.mode === 'logo';
+  const metaMap = isLogo ? LOGO_ARTBOARD_METADATA : ARTBOARD_METADATA;
 
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
-    const meta = ARTBOARD_METADATA[key] || { filename: `${key}.svg` };
+    const meta = metaMap[key] || { filename: `${key}.svg` };
     const svgStr = currentResults.svgs[key];
     if (!svgStr) continue;
 

@@ -159,6 +159,19 @@ export async function runTestSuite() {
   // --- SECTION 2: LIVE BROWSER MULTI-PAGE & RESPONSIVE LAYOUT AUDIT ---
   console.log('\n--- 2. Live Browser Multi-Page & Responsive Layout Audits ---');
 
+  // Auto-start Vite dev server if not already running on port 5173
+  let viteServer = null;
+  try {
+    const isRunning = await fetch('http://localhost:5173/c2vector/').then(r => r.ok).catch(() => false);
+    if (!isRunning) {
+      const { createServer } = await import('vite');
+      viteServer = await createServer();
+      await viteServer.listen(5173);
+    }
+  } catch (err) {
+    console.warn('Vite auto-start check:', err.message);
+  }
+
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
@@ -343,17 +356,82 @@ export async function runTestSuite() {
     const hasNavyPath = master.includes('#263f87');
 
     return {
+      isTransparentLogo: res.isTransparentLogo,
+      knockoutBackground: res.knockoutBackground,
       bgHex: res.bgHex,
       rectFill,
       hasNavyPath,
-      spotColors: res.palette.map(p => p.hex)
+      hasTransparentSvgs: Boolean(res.transparentSvgs && res.transparentSvgs.masterVibrant),
+      hasSolidSvgs: Boolean(res.solidSvgs && res.solidSvgs.masterVibrant),
+      transparentHasRect: res.transparentSvgs.masterVibrant.includes('<rect'),
+      solidRectFill: res.solidSvgs.masterVibrant.match(/<rect[^>]+fill="([^"]+)"/)?.[1]
     };
   });
 
-  assert(ariseTest.bgHex === '#ffffff', `Transparent PNG: Perimeter background resolves to neutral white (#ffffff) (actual: ${ariseTest.bgHex})`);
-  assert(ariseTest.rectFill === '#ffffff', `Transparent PNG: Master backing plate is white (#ffffff) (actual: ${ariseTest.rectFill})`);
+  assert(ariseTest.isTransparentLogo === true, 'Transparent PNG: Ingestion accurately detects perimeter alpha transparency (isTransparentLogo = true)');
+  assert(ariseTest.knockoutBackground === true, 'Transparent PNG: Default knockoutBackground is true for transparent logos');
+  assert(ariseTest.rectFill === null, `Transparent PNG: Master vector renders transparent background without backing rect (rectFill: ${ariseTest.rectFill})`);
   assert(ariseTest.hasNavyPath, 'Transparent PNG: Master vector renders high-contrast navy typography path (#263f87)');
-  assert(!ariseTest.rectFill.toLowerCase().includes('#263f87'), 'Transparent PNG: Zero camouflage collision (backing rect does NOT match dark navy typography)');
+  assert(!ariseTest.transparentHasRect, 'Transparent PNG: transparentSvgs master contains zero <rect> tags');
+  assert(ariseTest.solidRectFill === '#ffffff', `Transparent PNG: solidSvgs master provides contrast white substrate plate (actual: ${ariseTest.solidRectFill})`);
+
+  // Test Interactive Background Removal & Grid Toggle on UI
+  console.log('\n--- 6b. Grid Button Background Removal & Transparent SVG Downloads ---');
+  const gridButtonTest = await page.evaluate(async () => {
+    const btnGrid = document.getElementById('btnToggleGrid');
+    const viewport = document.getElementById('viewport');
+    
+    const initialGridOn = window.__c2vectorState.isGridOn;
+    const initialHasActive = btnGrid.classList.contains('active');
+    const initialHasGridPattern = viewport.classList.contains('grid-pattern');
+
+    // Click Grid button to turn ON background removal
+    btnGrid.click();
+    await new Promise(r => setTimeout(r, 60));
+
+    const toggledGridOn = window.__c2vectorState.isGridOn;
+    const toggledHasActive = btnGrid.classList.contains('active');
+    const toggledHasGridPattern = viewport.classList.contains('grid-pattern');
+    const svgAfterRemoval = viewport.querySelector('svg');
+    const rectAfterRemoval = svgAfterRemoval ? svgAfterRemoval.querySelector('rect') : null;
+    const svgStrCurrent = window.__c2vectorState.currentResults?.svgs?.masterVibrant || '';
+    const currentHasRect = svgStrCurrent.includes('<rect');
+
+    // Click Grid button again to turn OFF background removal (restore solid)
+    btnGrid.click();
+    await new Promise(r => setTimeout(r, 60));
+
+    const restoredGridOn = window.__c2vectorState.isGridOn;
+    const restoredHasActive = btnGrid.classList.contains('active');
+    const restoredHasGridPattern = viewport.classList.contains('grid-pattern');
+    const svgAfterRestore = viewport.querySelector('svg');
+    const rectAfterRestore = svgAfterRestore ? svgAfterRestore.querySelector('rect') : null;
+
+    return {
+      initialGridOn,
+      initialHasActive,
+      initialHasGridPattern,
+      toggledGridOn,
+      toggledHasActive,
+      toggledHasGridPattern,
+      rectAfterRemoval: Boolean(rectAfterRemoval),
+      currentHasRect,
+      restoredGridOn,
+      restoredHasActive,
+      restoredHasGridPattern,
+      rectAfterRestore: Boolean(rectAfterRestore)
+    };
+  });
+
+  assert(gridButtonTest.toggledGridOn === true, 'Grid Button: Clicking toggles isGridOn to true');
+  assert(gridButtonTest.toggledHasActive === true, 'Grid Button: #btnToggleGrid gains .active class');
+  assert(gridButtonTest.toggledHasGridPattern === true, 'Grid Button: #viewport gains .grid-pattern class displaying checkerboard');
+  assert(!gridButtonTest.rectAfterRemoval, 'Grid Button: Removes background rect from SVG artwork in viewport');
+  assert(!gridButtonTest.currentHasRect, 'Grid Button: Downloadable currentResults.svgs has zero background rect plates');
+  assert(gridButtonTest.restoredGridOn === false, 'Grid Button: Second click restores isGridOn to false');
+  assert(!gridButtonTest.restoredHasActive, 'Grid Button: Second click removes .active class');
+  assert(!gridButtonTest.restoredHasGridPattern, 'Grid Button: Second click hides checkerboard grid');
+  assert(gridButtonTest.rectAfterRestore === true, 'Grid Button: Second click restores solid background rect in viewport');
 
   console.log('\n--- Section 7: Desktop Layout Shift & Center Canvas Tests ---');
   
@@ -543,6 +621,12 @@ export async function runTestSuite() {
   assert(perfTest.perFrameMs < 5.0, `Canvas Performance: 60 simulated pan frames completed in ${perfTest.durationMs.toFixed(1)}ms (${perfTest.perFrameMs.toFixed(2)}ms/frame, well within 16.6ms budget)`);
 
   await browser.close();
+
+  if (viteServer) {
+    try {
+      await viteServer.close();
+    } catch (_) {}
+  }
 
   console.log('\n================================================================');
   console.log(`🏁 Test Suite Complete: ${passedTests}/${totalTests} Passed (${failedTests} Failed)`);

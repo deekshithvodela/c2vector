@@ -201,9 +201,17 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     }
   }
 
-  // If >= 20% of the canvas perimeter is transparent, this is a transparent-background logo.
+  // Count total transparent pixels across canvas
+  const totalPixels = rawWidth * rawHeight;
+  let transparentPixelCount = 0;
+  for (let i = 3; i < rawPixels.length; i += 4) {
+    if (rawPixels[i] < 64) transparentPixelCount++;
+  }
+
+  // If >= 10% of the canvas perimeter or >= 1% of total pixels is transparent, this is a transparent-background logo.
   // In transparent logos, fringe glyph pixels touching the border must NEVER hijack the background.
-  const isTransparentLogo = totalBorderCount > 0 && (transparentBorderCount / totalBorderCount) >= 0.20;
+  const isTransparentLogo = (totalBorderCount > 0 && (transparentBorderCount / totalBorderCount) >= 0.10) ||
+                            ((transparentPixelCount / totalPixels) >= 0.01);
 
   let bgHex = '#ffffff';
   let maxBorderCount = 0;
@@ -264,7 +272,6 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   }
 
   // Snap every pixel to nearest spot color
-  const totalPixels = rawWidth * rawHeight;
   const rawTierMap = new Int16Array(totalPixels);
   rawTierMap.fill(-1); // -1 = transparent
 
@@ -337,15 +344,11 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   // - alphaMax: 0.15 (preserves 90° corners, right angles, and sharp typographic terminals)
   // - optTolerance: 0.08 (keeps straight lines strictly straight without sinusoidal wavy oscillation)
   // - turdSize: 2 (preserves punctuation, dots on 'i', and fine serifs)
-  const vectorLayers = [];
-  const knockoutBackground = options.knockoutBackground !== undefined ? options.knockoutBackground : false;
+  const allVectorLayers = [];
+  const knockoutBackground = options.knockoutBackground !== undefined ? Boolean(options.knockoutBackground) : isTransparentLogo;
 
   for (let c = 0; c < spotColors.length; c++) {
     const col = spotColors[c];
-    if (knockoutBackground && col.hex.toLowerCase() === bgHex.toLowerCase()) {
-      continue; // Skip background layer for clean transparent decal
-    }
-
     const mask = new Uint8Array(totalPixels);
     for (let p = 0; p < totalPixels; p++) {
       if (pixelTierMap[p] === c) mask[p] = 1;
@@ -360,27 +363,51 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     });
 
     if (pathD && pathD.trim().length > 0) {
-      vectorLayers.push({
+      allVectorLayers.push({
         id: `logo-spot-color-${c}`,
         name: `Spot Color ${c + 1} (${col.hex})`,
         color: col.hex,
-        d: pathD
+        d: pathD,
+        isBg: col.hex.toLowerCase() === bgHex.toLowerCase()
       });
     }
   }
 
+  // Foreground layers: omit background color path for transparent background knockout
+  // In transparent logos, fringe pixels never match bgHex so all layers are foreground.
+  const fgVectorLayers = isTransparentLogo
+    ? allVectorLayers
+    : allVectorLayers.filter(l => !l.isBg);
+  const effectiveFgLayers = fgVectorLayers.length > 0 ? fgVectorLayers : allVectorLayers;
+
   progressCallback({ step: 4, name: 'Assembling Master Vector SVG & Tonal Plates', pct: 85 });
 
+  // Helper to format an SVG with or without background rect
+  function buildSvg(innerXml, bgFill = null) {
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
+    if (bgFill) {
+      s += `  <rect width="${rawWidth}" height="${rawHeight}" fill="${bgFill}"/>\n`;
+    }
+    s += innerXml;
+    s += '</svg>';
+    return s;
+  }
+
   // 1. Build Master Logo SVGs (masterVibrant & masterFaithful)
-  let masterSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  if (!knockoutBackground) {
-    masterSvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="${bgHex}"/>\n`;
+  let masterSolidInner = '  <!-- Precise Corner-Preserving Geometric Layers -->\n  <g id="logo-vector-paths">\n';
+  for (const layer of allVectorLayers) {
+    masterSolidInner += `    <path id="${layer.id}" fill="${layer.color}" fill-rule="evenodd" d="${layer.d}"/>\n`;
   }
-  masterSvg += '  <!-- Precise Corner-Preserving Geometric Layers -->\n  <g id="logo-vector-paths">\n';
-  for (const layer of vectorLayers) {
-    masterSvg += `    <path id="${layer.id}" fill="${layer.color}" fill-rule="evenodd" d="${layer.d}"/>\n`;
+  masterSolidInner += '  </g>\n';
+
+  let masterTransparentInner = '  <!-- Precise Corner-Preserving Geometric Layers -->\n  <g id="logo-vector-paths">\n';
+  for (const layer of effectiveFgLayers) {
+    masterTransparentInner += `    <path id="${layer.id}" fill="${layer.color}" fill-rule="evenodd" d="${layer.d}"/>\n`;
   }
-  masterSvg += '  </g>\n</svg>';
+  masterTransparentInner += '  </g>\n';
+
+  const masterSolidSvg = buildSvg(masterSolidInner, bgHex);
+  const masterTransparentSvg = buildSvg(masterTransparentInner, null);
 
   // 2. Simplified Spot-Color Plate (posterizeColor):
   // Screenprint separation retaining up to 8 salient dominant spot colors
@@ -410,18 +437,10 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   // Sort dominant colors by luminance from darkest to lightest
   dominantColors.sort((a, b) => a.lab[0] - b.lab[0]);
 
-  const reducedLayers = [];
+  const allReducedLayers = [];
   for (let c = 0; c < dominantColors.length; c++) {
     const col = dominantColors[c];
-    // If knockoutBackground is true and col matches bgHex, skip
-    if (knockoutBackground && col.hex.toLowerCase() === bgHex.toLowerCase()) {
-      continue;
-    }
-    // If knockoutBackground is false and col matches bgHex:
-    // Base <rect fill="${bgHex}"/> already renders the solid background canvas!
-    if (!knockoutBackground && col.hex.toLowerCase() === bgHex.toLowerCase()) {
-      continue;
-    }
+    const isBgColor = col.hex.toLowerCase() === bgHex.toLowerCase();
 
     const mask = new Uint8Array(totalPixels);
     for (let p = 0; p < totalPixels; p++) {
@@ -448,36 +467,47 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     });
 
     if (pathD && pathD.trim().length > 0) {
-      reducedLayers.push({ color: col.hex, d: pathD });
+      allReducedLayers.push({ color: col.hex, d: pathD, isBg: isBgColor });
     }
   }
 
-  let posterColorSvg = '';
-  if (reducedLayers.length === 0 && vectorLayers.length > 0) {
-    posterColorSvg = masterSvg;
-  } else {
-    posterColorSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-    if (!knockoutBackground) {
-      posterColorSvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="${bgHex}"/>\n`;
-    }
-    posterColorSvg += '  <!-- Spot-Color Reduction Plate (Up to 8 Inks) -->\n  <g id="screenprint-reduced-layers">\n';
-    for (const rl of reducedLayers) {
-      posterColorSvg += `    <path fill="${rl.color}" fill-rule="evenodd" d="${rl.d}"/>\n`;
-    }
-    posterColorSvg += '  </g>\n</svg>';
+  const fgReducedLayers = isTransparentLogo
+    ? allReducedLayers
+    : allReducedLayers.filter(l => !l.isBg);
+  const effectiveFgReduced = fgReducedLayers.length > 0 ? fgReducedLayers : allReducedLayers;
+
+  let posterSolidInner = '  <!-- Spot-Color Reduction Plate (Up to 8 Inks) -->\n  <g id="screenprint-reduced-layers">\n';
+  for (const rl of effectiveFgReduced) {
+    posterSolidInner += `    <path fill="${rl.color}" fill-rule="evenodd" d="${rl.d}"/>\n`;
   }
+  posterSolidInner += '  </g>\n';
+
+  let posterTransparentInner = '  <!-- Spot-Color Reduction Plate (Up to 8 Inks) -->\n  <g id="screenprint-reduced-layers">\n';
+  for (const rl of effectiveFgReduced) {
+    posterTransparentInner += `    <path fill="${rl.color}" fill-rule="evenodd" d="${rl.d}"/>\n`;
+  }
+  posterTransparentInner += '  </g>\n';
+
+  const posterSolidSvg = effectiveFgReduced.length === 0 ? masterSolidSvg : buildSvg(posterSolidInner, bgHex);
+  const posterTransparentSvg = effectiveFgReduced.length === 0 ? masterTransparentSvg : buildSvg(posterTransparentInner, null);
 
   // 3. Seamless Planar Vector (pixelMatch):
-  let pixelMatchSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  pixelMatchSvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="${bgHex}"/>\n`;
-  pixelMatchSvg += '  <!-- Seamless Planar Vector Layers -->\n  <g id="seamless-planar-paths">\n';
-  for (const layer of vectorLayers) {
-    pixelMatchSvg += `    <path fill="${layer.color}" fill-rule="evenodd" d="${layer.d}"/>\n`;
+  let pixelMatchSolidInner = '  <!-- Seamless Planar Vector Layers -->\n  <g id="seamless-planar-paths">\n';
+  for (const layer of allVectorLayers) {
+    pixelMatchSolidInner += `    <path fill="${layer.color}" fill-rule="evenodd" d="${layer.d}"/>\n`;
   }
-  pixelMatchSvg += '  </g>\n</svg>';
+  pixelMatchSolidInner += '  </g>\n';
+
+  let pixelMatchTransparentInner = '  <!-- Seamless Planar Vector Layers -->\n  <g id="seamless-planar-paths">\n';
+  for (const layer of effectiveFgLayers) {
+    pixelMatchTransparentInner += `    <path fill="${layer.color}" fill-rule="evenodd" d="${layer.d}"/>\n`;
+  }
+  pixelMatchTransparentInner += '  </g>\n';
+
+  const pixelMatchSolidSvg = buildSvg(pixelMatchSolidInner, bgHex);
+  const pixelMatchTransparentSvg = buildSvg(pixelMatchTransparentInner, null);
 
   // 4. Monochrome B&W 1-Bit Mask (monochrome):
-  // ALWAYS with a clean white contrast plate (<rect fill="#ffffff"/>) so it is NEVER blank on dark mode!
   const monoMask = new Uint8Array(totalPixels);
   for (let p = 0, i = 0; i < rawPixels.length; i += 4, p++) {
     if (rawPixels[i + 3] < 64) continue;
@@ -507,13 +537,12 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     turnPolicy: 'minority'
   });
 
-  let monoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  monoSvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="#ffffff"/>\n`;
-  monoSvg += '  <!-- 1-Bit High-Contrast Vinyl Decal Silhouette -->\n';
+  let monoInner = '  <!-- 1-Bit High-Contrast Vinyl Decal Silhouette -->\n';
   if (monoPathD && monoPathD.trim().length > 0) {
-    monoSvg += `  <path fill="#000000" fill-rule="evenodd" d="${monoPathD}"/>\n`;
+    monoInner += `  <path fill="#000000" fill-rule="evenodd" d="${monoPathD}"/>\n`;
   }
-  monoSvg += '</svg>';
+  const monoSolidSvg = buildSvg(monoInner, '#ffffff');
+  const monoTransparentSvg = buildSvg(monoInner, null);
 
   // 5. 4-Tone Grayscale Screenprint Plates (posterize4 & posterize4Inverted):
   const p4Mask0 = new Uint8Array(totalPixels);
@@ -536,21 +565,20 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   const p4Path1 = traceMaskToPathD(p4Mask1, rawWidth, rawHeight, { optCurve: true, alphaMax: 0.15, optTolerance: 0.08, turdSize: 3 });
   const p4Path2 = traceMaskToPathD(p4Mask2, rawWidth, rawHeight, { optCurve: true, alphaMax: 0.15, optTolerance: 0.08, turdSize: 3 });
 
-  let poster4Svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  poster4Svg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="#ffffff"/>\n`;
-  poster4Svg += '  <!-- 4-Tone Grayscale Screenprint Plate (Positive) -->\n';
-  if (p4Path2 && p4Path2.trim().length > 0) poster4Svg += `  <path fill="#aaaaaa" fill-rule="evenodd" d="${p4Path2}"/>\n`;
-  if (p4Path1 && p4Path1.trim().length > 0) poster4Svg += `  <path fill="#555555" fill-rule="evenodd" d="${p4Path1}"/>\n`;
-  if (p4Path0 && p4Path0.trim().length > 0) poster4Svg += `  <path fill="#000000" fill-rule="evenodd" d="${p4Path0}"/>\n`;
-  poster4Svg += '</svg>';
+  let p4Inner = '  <!-- 4-Tone Grayscale Screenprint Plate (Positive) -->\n';
+  if (p4Path2 && p4Path2.trim().length > 0) p4Inner += `  <path fill="#aaaaaa" fill-rule="evenodd" d="${p4Path2}"/>\n`;
+  if (p4Path1 && p4Path1.trim().length > 0) p4Inner += `  <path fill="#555555" fill-rule="evenodd" d="${p4Path1}"/>\n`;
+  if (p4Path0 && p4Path0.trim().length > 0) p4Inner += `  <path fill="#000000" fill-rule="evenodd" d="${p4Path0}"/>\n`;
 
-  let poster4InvSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  poster4InvSvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="#000000"/>\n`;
-  poster4InvSvg += '  <!-- 4-Tone Inverted Plate (Dark Apparel & Laser) -->\n';
-  if (p4Path0 && p4Path0.trim().length > 0) poster4InvSvg += `  <path fill="#ffffff" fill-rule="evenodd" d="${p4Path0}"/>\n`;
-  if (p4Path1 && p4Path1.trim().length > 0) poster4InvSvg += `  <path fill="#aaaaaa" fill-rule="evenodd" d="${p4Path1}"/>\n`;
-  if (p4Path2 && p4Path2.trim().length > 0) poster4InvSvg += `  <path fill="#555555" fill-rule="evenodd" d="${p4Path2}"/>\n`;
-  poster4InvSvg += '</svg>';
+  let p4InvInner = '  <!-- 4-Tone Inverted Plate (Dark Apparel & Laser) -->\n';
+  if (p4Path0 && p4Path0.trim().length > 0) p4InvInner += `  <path fill="#ffffff" fill-rule="evenodd" d="${p4Path0}"/>\n`;
+  if (p4Path1 && p4Path1.trim().length > 0) p4InvInner += `  <path fill="#aaaaaa" fill-rule="evenodd" d="${p4Path1}"/>\n`;
+  if (p4Path2 && p4Path2.trim().length > 0) p4InvInner += `  <path fill="#555555" fill-rule="evenodd" d="${p4Path2}"/>\n`;
+
+  const poster4SolidSvg = buildSvg(p4Inner, '#ffffff');
+  const poster4TransparentSvg = buildSvg(p4Inner, null);
+  const poster4InvSolidSvg = buildSvg(p4InvInner, '#000000');
+  const poster4InvTransparentSvg = buildSvg(p4InvInner, null);
 
   // 6. 8-Tone Grayscale Modeling Plates (posterize8 & posterize8Inverted):
   const p8Tones = ['#000000', '#242424', '#484848', '#6d6d6d', '#919191', '#b6b6b6', '#dbdbdb'];
@@ -572,26 +600,25 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     turdSize: 3
   }));
 
-  let poster8Svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  poster8Svg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="#ffffff"/>\n`;
-  poster8Svg += '  <!-- 8-Tone Grayscale Modeling Plate (Positive) -->\n';
+  let p8Inner = '  <!-- 8-Tone Grayscale Modeling Plate (Positive) -->\n';
   for (let t = 6; t >= 0; t--) {
     if (p8Paths[t] && p8Paths[t].trim().length > 0) {
-      poster8Svg += `  <path fill="${p8Tones[t]}" fill-rule="evenodd" d="${p8Paths[t]}"/>\n`;
+      p8Inner += `  <path fill="${p8Tones[t]}" fill-rule="evenodd" d="${p8Paths[t]}"/>\n`;
     }
   }
-  poster8Svg += '</svg>';
 
-  let poster8InvSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  poster8InvSvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="#000000"/>\n`;
-  poster8InvSvg += '  <!-- 8-Tone Inverted Discharge Plate -->\n';
+  let p8InvInner = '  <!-- 8-Tone Inverted Discharge Plate -->\n';
   const p8InvTones = ['#ffffff', '#dbdbdb', '#b6b6b6', '#919191', '#6d6d6d', '#484848', '#242424'];
   for (let t = 0; t < 7; t++) {
     if (p8Paths[t] && p8Paths[t].trim().length > 0) {
-      poster8InvSvg += `  <path fill="${p8InvTones[t]}" fill-rule="evenodd" d="${p8Paths[t]}"/>\n`;
+      p8InvInner += `  <path fill="${p8InvTones[t]}" fill-rule="evenodd" d="${p8Paths[t]}"/>\n`;
     }
   }
-  poster8InvSvg += '</svg>';
+
+  const poster8SolidSvg = buildSvg(p8Inner, '#ffffff');
+  const poster8TransparentSvg = buildSvg(p8Inner, null);
+  const poster8InvSolidSvg = buildSvg(p8InvInner, '#000000');
+  const poster8InvTransparentSvg = buildSvg(p8InvInner, null);
 
   // 7. Stencil SVG (stencil):
   const stencilMask = generateBridgeStencilMap(monoMask, rawWidth, rawHeight, 3, 40);
@@ -602,33 +629,78 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     turdSize: 4
   });
 
-  let stencilSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  stencilSvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="#ffffff"/>\n`;
-  stencilSvg += '  <!-- Bridge-Connected Laser Cut Stencil Plate -->\n';
+  let stencilInner = '  <!-- Bridge-Connected Laser Cut Stencil Plate -->\n';
   if (stencilPathD && stencilPathD.trim().length > 0) {
-    stencilSvg += `  <path fill="#000000" fill-rule="evenodd" d="${stencilPathD}"/>\n`;
+    stencilInner += `  <path fill="#000000" fill-rule="evenodd" d="${stencilPathD}"/>\n`;
   }
-  stencilSvg += '</svg>';
+  const stencilSolidSvg = buildSvg(stencilInner, '#ffffff');
+  const stencilTransparentSvg = buildSvg(stencilInner, null);
 
   // 8. CAD Plotter Wireframe (cannyEdges):
-  let cannySvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  cannySvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="#090d16"/>\n`;
-  cannySvg += '  <!-- CAD Plotter Wireframe & Toolpath Hairlines -->\n  <g id="plotter-cut-paths" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-linejoin="round">\n';
-  for (const layer of vectorLayers) {
-    cannySvg += `    <path d="${layer.d}"/>\n`;
+  let cannySolidInner = '  <!-- CAD Plotter Wireframe & Toolpath Hairlines -->\n  <g id="plotter-cut-paths" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-linejoin="round">\n';
+  for (const layer of allVectorLayers) {
+    cannySolidInner += `    <path d="${layer.d}"/>\n`;
   }
-  cannySvg += '  </g>\n</svg>';
+  cannySolidInner += '  </g>\n';
+
+  let cannyTransparentInner = '  <!-- CAD Plotter Wireframe & Toolpath Hairlines -->\n  <g id="plotter-cut-paths" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-linejoin="round">\n';
+  for (const layer of effectiveFgLayers) {
+    cannyTransparentInner += `    <path d="${layer.d}"/>\n`;
+  }
+  cannyTransparentInner += '  </g>\n';
+
+  const cannySolidSvg = buildSvg(cannySolidInner, '#090d16');
+  const cannyTransparentSvg = buildSvg(cannyTransparentInner, null);
 
   // 9. Color Registration Traps & Die-Cut Contours (chromaticEdges):
-  let chromaticSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
-  chromaticSvg += `  <rect width="${rawWidth}" height="${rawHeight}" fill="#090d16"/>\n`;
-  chromaticSvg += '  <!-- Color Registration Contours & Die-Cut Proofs -->\n  <g id="registration-contours" fill="none" stroke-width="2.0" stroke-linejoin="round">\n';
-  for (const layer of vectorLayers) {
-    chromaticSvg += `    <path stroke="${layer.color}" opacity="0.95" d="${layer.d}"/>\n`;
+  let chromaticSolidInner = '  <!-- Color Registration Contours & Die-Cut Proofs -->\n  <g id="registration-contours" fill="none" stroke-width="2.0" stroke-linejoin="round">\n';
+  for (const layer of allVectorLayers) {
+    chromaticSolidInner += `    <path stroke="${layer.color}" opacity="0.95" d="${layer.d}"/>\n`;
   }
-  chromaticSvg += '  </g>\n</svg>';
+  chromaticSolidInner += '  </g>\n';
+
+  let chromaticTransparentInner = '  <!-- Color Registration Contours & Die-Cut Proofs -->\n  <g id="registration-contours" fill="none" stroke-width="2.0" stroke-linejoin="round">\n';
+  for (const layer of effectiveFgLayers) {
+    chromaticTransparentInner += `    <path stroke="${layer.color}" opacity="0.95" d="${layer.d}"/>\n`;
+  }
+  chromaticTransparentInner += '  </g>\n';
+
+  const chromaticSolidSvg = buildSvg(chromaticSolidInner, '#090d16');
+  const chromaticTransparentSvg = buildSvg(chromaticTransparentInner, null);
 
   progressCallback({ step: 5, name: 'Vectorization Complete', pct: 100 });
+
+  const solidSvgs = {
+    masterVibrant: masterSolidSvg,
+    masterFaithful: masterSolidSvg,
+    posterizeColor: posterSolidSvg,
+    pixelMatch: pixelMatchSolidSvg,
+    monochrome: monoSolidSvg,
+    stencil: stencilSolidSvg,
+    posterize4: poster4SolidSvg,
+    posterize4Inverted: poster4InvSolidSvg,
+    posterize8: poster8SolidSvg,
+    posterize8Inverted: poster8InvSolidSvg,
+    cannyEdges: cannySolidSvg,
+    chromaticEdges: chromaticSolidSvg
+  };
+
+  const transparentSvgs = {
+    masterVibrant: masterTransparentSvg,
+    masterFaithful: masterTransparentSvg,
+    posterizeColor: posterTransparentSvg,
+    pixelMatch: pixelMatchTransparentSvg,
+    monochrome: monoTransparentSvg,
+    stencil: stencilTransparentSvg,
+    posterize4: poster4TransparentSvg,
+    posterize4Inverted: poster4InvTransparentSvg,
+    posterize8: poster8TransparentSvg,
+    posterize8Inverted: poster8InvTransparentSvg,
+    cannyEdges: cannyTransparentSvg,
+    chromaticEdges: chromaticTransparentSvg
+  };
+
+  const activeSvgs = knockoutBackground ? transparentSvgs : solidSvgs;
 
   return {
     mode: 'logo',
@@ -636,21 +708,12 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     tiers: spotColors.length,
     spotColors,
     bgHex,
-    layersCount: vectorLayers.length,
-    svgs: {
-      masterVibrant: masterSvg,
-      masterFaithful: masterSvg,
-      posterizeColor: posterColorSvg,
-      pixelMatch: pixelMatchSvg,
-      monochrome: monoSvg,
-      stencil: stencilSvg,
-      posterize4: poster4Svg,
-      posterize4Inverted: poster4InvSvg,
-      posterize8: poster8Svg,
-      posterize8Inverted: poster8InvSvg,
-      cannyEdges: cannySvg,
-      chromaticEdges: chromaticSvg
-    },
+    isTransparentLogo,
+    knockoutBackground,
+    layersCount: knockoutBackground ? effectiveFgLayers.length : allVectorLayers.length,
+    svgs: activeSvgs,
+    solidSvgs,
+    transparentSvgs,
     palette: spotColors.map(c => ({ hex: c.hex, r: c.r, g: c.g, b: c.b, L: c.lab[0] })),
     vibrantPalette: spotColors.map(c => ({ hex: c.hex, r: c.r, g: c.g, b: c.b, L: c.lab[0] })),
     tmiReport: { pearsonR: 1.0, spearmanRho: 1.0, inversions: 0 },
