@@ -299,6 +299,8 @@ function initWorker() {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then((reg) => {
+      // Proactively check for updated worker on load
+      reg.update().catch(() => {});
       console.log('c2vector PWA Service Worker registered:', reg.scope);
     }).catch((err) => {
       console.warn('PWA Service Worker registration skipped:', err);
@@ -420,7 +422,7 @@ btnBrowseLogo?.addEventListener('click', (e) => {
 fileInput?.addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   if (file) {
-    processImageFile(file, 'photo');
+    processImageFile(file, currentEngineMode);
   }
 });
 
@@ -474,8 +476,8 @@ async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
   let w = img.naturalWidth || img.width;
   let h = img.naturalHeight || img.height;
 
-  // Constrain uploaded photos safely to HD budget (<= 1024px max edge)
-  const maxDim = mode === 'logo' ? 1200 : 1024;
+  // Constrain uploaded artwork safely to HD budget (<= 1200px max edge)
+  const maxDim = 1200;
   if (w > maxDim || h > maxDim) {
     if (w >= h) {
       h = Math.round(h * (maxDim / w));
@@ -491,13 +493,29 @@ async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   
-  if (mode === 'photo') {
-    // Photos: guardrail against alpha transparency: pre-fill with solid white
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, w, h);
-  }
+  // Draw raw image to inspect native alpha channels
   ctx.drawImage(img, 0, 0, w, h);
   const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+
+  // Inspect alpha channel across image pixels
+  let transparentPixelCount = 0;
+  const totalPixels = w * h;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] < 250) {
+      transparentPixelCount++;
+    }
+  }
+
+  // If > 0.2% of pixels are transparent, image has transparent background
+  const hasAlphaTransparency = (transparentPixelCount / totalPixels) >= 0.002;
+  let effectiveMode = mode;
+
+  if (hasAlphaTransparency) {
+    // Automatically switch to logo mode for dedicated spot-color vectorization and background transparency
+    effectiveMode = 'logo';
+    setEngineMode('logo');
+  }
 
   // Proactive memory cleanup for large uploaded images
   canvas.width = 1;
@@ -507,12 +525,12 @@ async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
   initWorker();
   worker.postMessage({
     id: Date.now(),
-    rawPixels: imgData.data,
+    rawPixels: data,
     width: w,
     height: h,
     options: {
-      mode: mode,
-      tiers: mode === 'logo' ? 32 : 48,
+      mode: effectiveMode,
+      tiers: effectiveMode === 'logo' ? 32 : 48,
       maxColors: 32
     }
   });
