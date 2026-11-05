@@ -347,6 +347,22 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   const allVectorLayers = [];
   const knockoutBackground = options.knockoutBackground !== undefined ? Boolean(options.knockoutBackground) : isTransparentLogo;
 
+  // Trace Foreground Subject Silhouette Mask (where alpha >= 64) for Transparent Underlays
+  let silhouettePathD = null;
+  if (isTransparentLogo) {
+    const silMask = new Uint8Array(totalPixels);
+    for (let i = 0; i < rawPixels.length; i += 4) {
+      if (rawPixels[i + 3] >= 64) silMask[i / 4] = 1;
+    }
+    silhouettePathD = traceMaskToPathD(silMask, rawWidth, rawHeight, {
+      optCurve: true,
+      alphaMax: 0.15,
+      optTolerance: 0.08,
+      turdSize: 2,
+      turnPolicy: 'minority'
+    });
+  }
+
   for (let c = 0; c < spotColors.length; c++) {
     const col = spotColors[c];
     const mask = new Uint8Array(totalPixels);
@@ -383,15 +399,21 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   progressCallback({ step: 4, name: 'Assembling Master Vector SVG & Tonal Plates', pct: 85 });
 
   // Helper to format an SVG with or without background rect
-  function buildSvg(innerXml, bgFill = null) {
+  function buildSvg(innerXml, bgFill = null, silPath = null, silFill = null) {
     let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${rawWidth} ${rawHeight}" width="${rawWidth}" height="${rawHeight}">\n`;
     if (bgFill) {
       s += `  <rect width="${rawWidth}" height="${rawHeight}" fill="${bgFill}"/>\n`;
+    } else if (silPath && silFill) {
+      s += `  <!-- Subject Silhouette Base (Seals 100% of internal seams in transparent vector) -->\n`;
+      s += `  <path id="logo-silhouette-base" fill="${silFill}" fill-rule="evenodd" d="${silPath}"/>\n`;
     }
     s += innerXml;
     s += '</svg>';
     return s;
   }
+
+  // Base fill for transparent silhouette underlays
+  const baseLogoColor = effectiveFgLayers[0]?.color || spotColors[0]?.hex || '#000000';
 
   // 1. Build Master Logo SVGs (masterVibrant & masterFaithful)
   let masterSolidInner = '  <!-- Precise Corner-Preserving Geometric Layers -->\n  <g id="logo-vector-paths">\n';
@@ -407,7 +429,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   masterTransparentInner += '  </g>\n';
 
   const masterSolidSvg = buildSvg(masterSolidInner, bgHex);
-  const masterTransparentSvg = buildSvg(masterTransparentInner, null);
+  const masterTransparentSvg = buildSvg(masterTransparentInner, null, silhouettePathD, baseLogoColor);
 
   // 2. Simplified Spot-Color Plate (posterizeColor):
   // Screenprint separation retaining up to 8 salient dominant spot colors
@@ -488,8 +510,9 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   }
   posterTransparentInner += '  </g>\n';
 
+  const posterBaseColor = effectiveFgReduced[0]?.color || dominantColors[0]?.hex || baseLogoColor;
   const posterSolidSvg = effectiveFgReduced.length === 0 ? masterSolidSvg : buildSvg(posterSolidInner, bgHex);
-  const posterTransparentSvg = effectiveFgReduced.length === 0 ? masterTransparentSvg : buildSvg(posterTransparentInner, null);
+  const posterTransparentSvg = effectiveFgReduced.length === 0 ? masterTransparentSvg : buildSvg(posterTransparentInner, null, silhouettePathD, posterBaseColor);
 
   // 3. Seamless Planar Vector (pixelMatch):
   let pixelMatchSolidInner = '  <!-- Seamless Planar Vector Layers -->\n  <g id="seamless-planar-paths">\n';
@@ -505,7 +528,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   pixelMatchTransparentInner += '  </g>\n';
 
   const pixelMatchSolidSvg = buildSvg(pixelMatchSolidInner, bgHex);
-  const pixelMatchTransparentSvg = buildSvg(pixelMatchTransparentInner, null);
+  const pixelMatchTransparentSvg = buildSvg(pixelMatchTransparentInner, null, silhouettePathD, baseLogoColor);
 
   // 4. Monochrome B&W 1-Bit Mask (monochrome):
   const monoMask = new Uint8Array(totalPixels);
@@ -542,7 +565,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     monoInner += `  <path fill="#000000" fill-rule="evenodd" d="${monoPathD}"/>\n`;
   }
   const monoSolidSvg = buildSvg(monoInner, '#ffffff');
-  const monoTransparentSvg = buildSvg(monoInner, null);
+  const monoTransparentSvg = buildSvg(monoInner, null, silhouettePathD, '#ffffff');
 
   // 5. 4-Tone Grayscale Screenprint Plates (posterize4 & posterize4Inverted):
   const p4Mask0 = new Uint8Array(totalPixels);
@@ -576,9 +599,9 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   if (p4Path2 && p4Path2.trim().length > 0) p4InvInner += `  <path fill="#555555" fill-rule="evenodd" d="${p4Path2}"/>\n`;
 
   const poster4SolidSvg = buildSvg(p4Inner, '#ffffff');
-  const poster4TransparentSvg = buildSvg(p4Inner, null);
+  const poster4TransparentSvg = buildSvg(p4Inner, null, silhouettePathD, '#ffffff');
   const poster4InvSolidSvg = buildSvg(p4InvInner, '#000000');
-  const poster4InvTransparentSvg = buildSvg(p4InvInner, null);
+  const poster4InvTransparentSvg = buildSvg(p4InvInner, null, silhouettePathD, '#000000');
 
   // 6. 8-Tone Grayscale Modeling Plates (posterize8 & posterize8Inverted):
   const p8Tones = ['#000000', '#242424', '#484848', '#6d6d6d', '#919191', '#b6b6b6', '#dbdbdb'];
@@ -616,9 +639,9 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   }
 
   const poster8SolidSvg = buildSvg(p8Inner, '#ffffff');
-  const poster8TransparentSvg = buildSvg(p8Inner, null);
+  const poster8TransparentSvg = buildSvg(p8Inner, null, silhouettePathD, '#ffffff');
   const poster8InvSolidSvg = buildSvg(p8InvInner, '#000000');
-  const poster8InvTransparentSvg = buildSvg(p8InvInner, null);
+  const poster8InvTransparentSvg = buildSvg(p8InvInner, null, silhouettePathD, '#000000');
 
   // 7. Stencil SVG (stencil):
   const stencilMask = generateBridgeStencilMap(monoMask, rawWidth, rawHeight, 3, 40);
@@ -634,7 +657,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     stencilInner += `  <path fill="#000000" fill-rule="evenodd" d="${stencilPathD}"/>\n`;
   }
   const stencilSolidSvg = buildSvg(stencilInner, '#ffffff');
-  const stencilTransparentSvg = buildSvg(stencilInner, null);
+  const stencilTransparentSvg = buildSvg(stencilInner, null, silhouettePathD, '#ffffff');
 
   // 8. CAD Plotter Wireframe (cannyEdges):
   let cannySolidInner = '  <!-- CAD Plotter Wireframe & Toolpath Hairlines -->\n  <g id="plotter-cut-paths" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-linejoin="round">\n';

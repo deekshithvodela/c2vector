@@ -787,6 +787,146 @@ export async function runTestSuite() {
   assert(vectorPathAudit.exportCheck.hasDoctype, 'SVG Export: Downloadable SVG includes official W3C SVG 1.1 DTD preamble for Canva/Illustrator compatibility');
   assert(vectorPathAudit.exportCheck.hasVersion11 && vectorPathAudit.exportCheck.hasXlink, 'SVG Export: Root <svg> declares version="1.1" and xmlns:xlink namespace');
 
+  // --- SECTION 10: TRANSPARENT INTERNAL SEAM & SILHOUETTE UNDERLAY VERIFICATION ---
+  console.log('\n--- Section 10: Transparent Internal Seam & Silhouette Underlay Verification ---');
+
+  const testImgPath = path.join(ROOT_DIR, 'input/traditional_figures_transparent.png');
+  const testImgBase64 = fs.existsSync(testImgPath)
+    ? fs.readFileSync(testImgPath).toString('base64')
+    : null;
+
+  const transparencyAudit = await page.evaluate(async (imgBase64) => {
+    let imgData;
+    let w, h;
+
+    if (imgBase64) {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = 'data:image/png;base64,' + imgBase64;
+      });
+      w = img.naturalWidth;
+      h = img.naturalHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      imgData = ctx.getImageData(0, 0, w, h);
+    } else {
+      // Fallback programmatic multi-tone graphic on transparent ground
+      w = 300;
+      h = 300;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#2b1a14';
+      ctx.beginPath();
+      ctx.arc(150, 150, 100, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#9b826f';
+      ctx.beginPath();
+      ctx.arc(150, 150, 60, 0, Math.PI * 2);
+      ctx.fill();
+      imgData = ctx.getImageData(0, 0, w, h);
+    }
+
+    const originalOpaquePixels = [];
+    const originalTransparentPixels = [];
+    for (let i = 0; i < imgData.data.length; i += 4) {
+      if (imgData.data[i + 3] >= 64) {
+        originalOpaquePixels.push(i / 4);
+      } else {
+        originalTransparentPixels.push(i / 4);
+      }
+    }
+
+    const { runVectorizationPipeline } = await import('/c2vector/src/js/engine/pipeline.js');
+    const { runLogoVectorizationPipeline } = await import('/c2vector/src/js/engine/logo-engine.js');
+
+    const photoRes = await runVectorizationPipeline(imgData.data, w, h, { tiers: 16 });
+    const logoRes = await runLogoVectorizationPipeline(imgData.data, w, h, { maxColors: 16 });
+
+    const evalCanvas = document.createElement('canvas');
+    evalCanvas.width = w;
+    evalCanvas.height = h;
+    const evalCtx = evalCanvas.getContext('2d');
+
+    async function evaluateSvg(svgStr) {
+      const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const renderImg = new Image();
+      await new Promise((resolve, reject) => {
+        renderImg.onload = resolve;
+        renderImg.onerror = reject;
+        renderImg.src = url;
+      });
+      evalCtx.clearRect(0, 0, w, h);
+      evalCtx.drawImage(renderImg, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      const renderedData = evalCtx.getImageData(0, 0, w, h).data;
+
+      let missingInsideSubject = 0;
+      for (const idx of originalOpaquePixels) {
+        if (renderedData[idx * 4 + 3] < 32) {
+          missingInsideSubject++;
+        }
+      }
+
+      let leakedOutsideSubject = 0;
+      for (const idx of originalTransparentPixels) {
+        if (renderedData[idx * 4 + 3] >= 32) {
+          leakedOutsideSubject++;
+        }
+      }
+
+      return {
+        missingInsideSubject,
+        missingPct: (missingInsideSubject / originalOpaquePixels.length) * 100,
+        leakedOutsideSubject,
+        leakedPct: (leakedOutsideSubject / originalTransparentPixels.length) * 100,
+        hasRect: svgStr.includes('<rect')
+      };
+    }
+
+    const filledArtboards = [
+      'masterVibrant', 'masterFaithful', 'posterizeColor', 'pixelMatch',
+      'monochrome', 'stencil', 'posterize4', 'posterize4Inverted',
+      'posterize8', 'posterize8Inverted'
+    ];
+
+    const photoStats = {};
+    for (const key of filledArtboards) {
+      photoStats[key] = await evaluateSvg(photoRes.transparentSvgs[key]);
+    }
+
+    const logoStats = {};
+    for (const key of filledArtboards) {
+      logoStats[key] = await evaluateSvg(logoRes.transparentSvgs[key]);
+    }
+
+    return {
+      photoStats,
+      logoStats,
+      totalSubjectPixels: originalOpaquePixels.length,
+      totalBgPixels: originalTransparentPixels.length
+    };
+  }, testImgBase64);
+
+  for (const [key, stat] of Object.entries(transparencyAudit.photoStats)) {
+    assert(!stat.hasRect, `Photo Mode "${key}": Zero <rect> background canvas plate in transparent mode`);
+    assert(stat.missingPct <= 0.1, `Photo Mode "${key}": Seamless internal coverage (>= 99.9% opaque subject, only ${stat.missingInsideSubject} px / ${stat.missingPct.toFixed(3)}% missing)`);
+    assert(stat.leakedPct <= 1.0, `Photo Mode "${key}": Canvas background remains >= 99.0% transparent (only ${stat.leakedPct.toFixed(3)}% border fringe)`);
+  }
+
+  for (const [key, stat] of Object.entries(transparencyAudit.logoStats)) {
+    assert(!stat.hasRect, `Logo Mode "${key}": Zero <rect> background canvas plate in transparent mode`);
+    assert(stat.missingPct <= 0.1, `Logo Mode "${key}": Seamless internal coverage (>= 99.9% opaque subject, only ${stat.missingInsideSubject} px / ${stat.missingPct.toFixed(3)}% missing)`);
+    assert(stat.leakedPct <= 1.0, `Logo Mode "${key}": Canvas background remains >= 99.0% transparent (only ${stat.leakedPct.toFixed(3)}% border fringe)`);
+  }
+
   await browser.close();
 
   if (viteServer) {

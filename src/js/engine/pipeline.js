@@ -55,6 +55,21 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   const isTransparent = (totalBorderCount > 0 && (transparentBorderCount / totalBorderCount) >= 0.10) ||
                         ((transparentPixelCount / totalPixels) >= 0.005);
 
+  // Trace Foreground Subject Silhouette Mask (where alpha >= 64) for Transparent Underlays
+  let silhouettePathD = null;
+  if (isTransparent) {
+    const silMask = new Uint8Array(targetHDWidth * targetHDHeight);
+    for (let i = 0; i < cleanPixels.length; i += 4) {
+      if (cleanPixels[i + 3] >= 64) silMask[i / 4] = 1;
+    }
+    silhouettePathD = traceMaskToPathD(silMask, targetHDWidth, targetHDHeight, {
+      optCurve: true,
+      turdSize: 2,
+      optTolerance: 0.15,
+      turnPolicy: 'minority'
+    });
+  }
+
   // STEP 2: TONAL STUDIES (Universal Discrete Grayscale Print Specifications)
   progressCallback({ step: 2, name: 'Monochrome, Posterize & Stencil Studies', pct: 35 });
   const otsuThreshold = computeOtsuThreshold(cleanPixels, targetHDWidth, targetHDHeight);
@@ -81,14 +96,14 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     color: col,
     mask: p4Masks[idx],
     opacity: 1.0,
-    turdSize: 16
+    turdSize: 3
   }));
   const p4InvLayers = p4InvColors.map((col, idx) => ({
     name: `BW-Inverted-Tier-${idx}`,
     color: col,
     mask: p4Masks[idx],
     opacity: 1.0,
-    turdSize: 16
+    turdSize: 3
   }));
 
   // Compute 8-Tone Grayscale Masks (ignoring transparent pixels)
@@ -106,34 +121,34 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     color: col,
     mask: p8Masks[idx],
     opacity: 1.0,
-    turdSize: 14
+    turdSize: 3
   }));
   const p8InvLayers = p8InvColors.map((col, idx) => ({
     name: `BW-Inverted-Gradation-${idx}`,
     color: col,
     mask: p8Masks[idx],
     opacity: 1.0,
-    turdSize: 14
+    turdSize: 3
   }));
 
   // Build Study SVGs (Dual Solid & Transparent Variants)
   const monoSolidSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', '#ffffff', monoMap);
-  const monoTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', null, monoMap);
+  const monoTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', null, monoMap, {}, silhouettePathD);
 
   const stencilSolidSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', '#ffffff', stencilMap);
-  const stencilTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', null, stencilMap);
+  const stencilTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', null, stencilMap, {}, silhouettePathD);
 
   const poster4SolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4Layers, '#000000');
-  const poster4TransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4Layers, null);
+  const poster4TransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4Layers, null, silhouettePathD, '#000000');
 
   const poster4InvSolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4InvLayers, '#ffffff');
-  const poster4InvTransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4InvLayers, null);
+  const poster4InvTransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p4InvLayers, null, silhouettePathD, '#ffffff');
 
   const poster8SolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8Layers, '#000000');
-  const poster8TransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8Layers, null);
+  const poster8TransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8Layers, null, silhouettePathD, '#000000');
 
   const poster8InvSolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8InvLayers, '#ffffff');
-  const poster8InvTransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8InvLayers, null);
+  const poster8InvTransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, p8InvLayers, null, silhouettePathD, '#ffffff');
 
   // STEP 3: DEPTH ESTIMATION & HAIRLINE EDGES
   progressCallback({ step: 3, name: 'Canny Hairline Edges & Focus Depth Map', pct: 55 });
@@ -337,12 +352,12 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
       name: `Color-Poster-Tier-${t}`,
       color: posterColorPalette[t].hex,
       mask: mask,
-      turdSize: 24
+      turdSize: 4
     });
   }
   const posterBaseColor = posterColorPalette[0] ? posterColorPalette[0].hex : '#000000';
   const posterColorSolidSvg = buildColorPosterizeSvg(targetHDWidth, targetHDHeight, posterLayers, posterBaseColor);
-  const posterColorTransparentSvg = buildColorPosterizeSvg(targetHDWidth, targetHDHeight, posterLayers, null);
+  const posterColorTransparentSvg = buildColorPosterizeSvg(targetHDWidth, targetHDHeight, posterLayers, null, silhouettePathD);
 
   // Seamless Pixel-Match Vector (Anti-Grid Architecture)
   // 2D contiguous polygon boundary fusion & sub-pixel Potrace curve fitting
@@ -358,14 +373,14 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   }
   const pixelMatchBaseColor = palette[0] ? palette[0].hex : '#000000';
   const pixelMatchSolidSvg = buildSeamlessPixelMatchSvg(targetHDWidth, targetHDHeight, pixelMatchLayers, pixelMatchBaseColor);
-  const pixelMatchTransparentSvg = buildSeamlessPixelMatchSvg(targetHDWidth, targetHDHeight, pixelMatchLayers, null);
+  const pixelMatchTransparentSvg = buildSeamlessPixelMatchSvg(targetHDWidth, targetHDHeight, pixelMatchLayers, null, silhouettePathD);
 
   // STEP 6: BUILD ALL STANDALONE SVG DELIVERABLES
   const masterFaithfulSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, defaultSubstrate);
-  const masterFaithfulTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, null);
+  const masterFaithfulTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, null, silhouettePathD);
 
   const masterVibrantSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, defaultSubstrate);
-  const masterVibrantTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, null);
+  const masterVibrantTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, null, silhouettePathD);
 
   progressCallback({ step: 6, name: 'Complete', pct: 100 });
 

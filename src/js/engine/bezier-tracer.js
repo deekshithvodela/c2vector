@@ -30,12 +30,17 @@ export function traceBinaryMask(mask, width, height, options = {}) {
  * Builds Full Master Vector SVG string with continuous Bézier tiers and translucent chromatic contours
  * Universal Continuous Discrete Vector Tier Production Print Specifications
  */
-export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges = null, bgHex = null) {
+export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges = null, bgHex = null, silhouettePathD = null) {
   let body = '';
 
-  // 1. Solid background base underlay path preventing sub-pixel seam light leaks (omitted for transparent background)
+  // 1. Solid background base underlay path preventing sub-pixel seam light leaks
   if (bgHex) {
     body += `  <rect width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  } else if (silhouettePathD) {
+    // For transparent vectors, the opaque subject silhouette seals 100% of internal seams without leaking canvas background
+    const baseColor = palette[0] ? palette[0].hex : '#000000';
+    body += `  <!-- Subject Silhouette Base (Seals 100% of internal seams in transparent vector) -->\n`;
+    body += `  <path id="subject-silhouette-base" fill="${baseColor}" fill-rule="evenodd" d="${silhouettePathD}"/>\n`;
   }
 
   // 2. Render color tiers in tonal order (darkest to lightest)
@@ -48,7 +53,7 @@ export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges
 
     const pathD = traceMaskToPathD(mask, width, height, {
       optCurve: true,
-      turdSize: 14,
+      turdSize: 3,
       optTolerance: 0.22,
       turnPolicy: 'minority'
     });
@@ -78,8 +83,8 @@ export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges
 /**
  * Builds 1-bit or single-mask study SVG
  */
-export function buildStudySvg(width, height, fillHex, bgHex, mask, options = {}) {
-  const turdSize = options.turdSize !== undefined ? options.turdSize : 10;
+export function buildStudySvg(width, height, fillHex, bgHex, mask, options = {}, silhouettePathD = null) {
+  const turdSize = options.turdSize !== undefined ? options.turdSize : 3;
   const pathD = traceMaskToPathD(mask, width, height, {
     optCurve: true,
     turdSize,
@@ -90,6 +95,9 @@ export function buildStudySvg(width, height, fillHex, bgHex, mask, options = {})
   let body = '';
   if (bgHex) {
     body += `  <rect width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  } else if (silhouettePathD) {
+    body += `  <!-- Contrasting Opaque Silhouette Base Plate for Transparent Vector Stencil -->\n`;
+    body += `  <path id="study-silhouette-base" fill="#ffffff" fill-rule="evenodd" d="${silhouettePathD}"/>\n`;
   }
   if (pathD && pathD.trim().length > 0) {
     body += `  <path fill="${fillHex}" fill-rule="evenodd" d="${pathD}"/>\n`;
@@ -102,17 +110,20 @@ export function buildStudySvg(width, height, fillHex, bgHex, mask, options = {})
  * Builds Multi-Tier Grayscale Tonal Study SVG (4-tone, 8-tone, inverted plates)
  * Universal Discrete Vector Tier Production Print Specifications
  */
-export function buildMultiToneStudySvg(width, height, layers, bgHex = null) {
+export function buildMultiToneStudySvg(width, height, layers, bgHex = null, silhouettePathD = null, defaultBaseFill = '#000000') {
   let body = '';
   if (bgHex) {
     body += `  <rect width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  } else if (silhouettePathD) {
+    body += `  <!-- Subject Silhouette Base Plate (Seals internal tone gaps in transparent vector) -->\n`;
+    body += `  <path id="tonal-silhouette-base" fill="${defaultBaseFill}" fill-rule="evenodd" d="${silhouettePathD}"/>\n`;
   }
   body += '  <g id="tonal-study-layers">\n';
   for (const layer of layers) {
     if (!layer.mask) continue;
     const pathD = traceMaskToPathD(layer.mask, width, height, {
       optCurve: true,
-      turdSize: layer.turdSize !== undefined ? layer.turdSize : 14,
+      turdSize: layer.turdSize !== undefined ? layer.turdSize : 3,
       optTolerance: 0.20,
       turnPolicy: 'minority'
     });
@@ -129,10 +140,14 @@ export function buildMultiToneStudySvg(width, height, layers, bgHex = null) {
  * Builds Bold Color Posterized Print Plate SVG (8-12 bold chromatic planes)
  * Uses enhanced planar smoothing for bold, iconic Pop-Art / silkscreen poster fills
  */
-export function buildColorPosterizeSvg(width, height, layers, bgHex = null) {
+export function buildColorPosterizeSvg(width, height, layers, bgHex = null, silhouettePathD = null) {
   let body = '';
   if (bgHex) {
     body += `  <!-- Base Underlay -->\n  <rect width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  } else if (silhouettePathD) {
+    const baseColor = layers[0] ? layers[0].color : '#000000';
+    body += `  <!-- Subject Silhouette Base (Eliminates inter-plane transparent fissures) -->\n`;
+    body += `  <path id="poster-silhouette-base" fill="${baseColor}" fill-rule="evenodd" d="${silhouettePathD}"/>\n`;
   }
   body += '  <!-- Bold Chromatic Poster Planes (Pop-Art / Silkscreen Vector) -->\n';
   body += '  <g id="color-posterize-planes">\n';
@@ -140,7 +155,7 @@ export function buildColorPosterizeSvg(width, height, layers, bgHex = null) {
     if (!layer.mask) continue;
     const pathD = traceMaskToPathD(layer.mask, width, height, {
       optCurve: true,
-      turdSize: layer.turdSize !== undefined ? layer.turdSize : 24,
+      turdSize: layer.turdSize !== undefined ? layer.turdSize : 4,
       optTolerance: 0.25,
       turnPolicy: 'minority'
     });
@@ -158,12 +173,16 @@ export function buildColorPosterizeSvg(width, height, layers, bgHex = null) {
  * 2D contiguous polygon boundary fusion, sub-pixel Potrace curve fitting, and solid underlay
  * Completely eliminates rectangular scanline bricks, grid staircases, and inter-pixel white seams
  */
-export function buildSeamlessPixelMatchSvg(width, height, layers, bgHex = null) {
+export function buildSeamlessPixelMatchSvg(width, height, layers, bgHex = null, silhouettePathD = null) {
   let body = '';
   // 1. Solid underlay eliminates 100% of inter-polygon anti-aliasing white seam lines
   if (bgHex) {
     body += `  <!-- Solid Base Underlay: Eliminates 100% of sub-pixel grid lines and seam light bleed -->\n`;
     body += `  <rect id="pixel-match-base-underlay" width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  } else if (silhouettePathD) {
+    const baseColor = layers[0] ? layers[0].color : '#000000';
+    body += `  <!-- Subject Silhouette Base: Eliminates 100% of transparent gaps in transparent vector -->\n`;
+    body += `  <path id="pixel-match-silhouette-underlay" fill="${baseColor}" fill-rule="evenodd" d="${silhouettePathD}"/>\n`;
   }
 
   // 2. Continuous Bézier Color Zones (G1 Tangent Continuity, Zero Rectangular Bricks)
@@ -173,7 +192,7 @@ export function buildSeamlessPixelMatchSvg(width, height, layers, bgHex = null) 
     if (!layer.mask) continue;
     const pathD = traceMaskToPathD(layer.mask, width, height, {
       optCurve: true,
-      turdSize: 8,
+      turdSize: 3,
       optTolerance: 0.18,
       turnPolicy: 'minority'
     });
