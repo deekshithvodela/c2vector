@@ -110,3 +110,88 @@ export function generateBridgeStencilMap(monochromeMap, width, height, bridgeWid
 
   return stencil;
 }
+
+/**
+ * Generates an exact alpha mask for transparent vectors.
+ * Directly reads pixel alpha values to preserve 100% of both external and internal transparent cutouts
+ * (such as negative space between limbs/torso, typography counter loops, open filigree in furniture).
+ * Applies a micro-speckle noise filter to fill only isolated single-pixel dust/noise voids (< 6px),
+ * while strictly preserving all genuine transparent regions (>= 6px).
+ * 
+ * @param {Uint8ClampedArray|Uint8Array} pixels - RGBA pixel array
+ * @param {number} width - Canvas width
+ * @param {number} height - Canvas height
+ * @param {object} [options] - Optional configuration (alphaThreshold, minHoleArea)
+ * @returns {Uint8Array} - 1 for subject, 0 for transparent areas
+ */
+export function generateExactAlphaMask(pixels, width, height, options = {}) {
+  const threshold = options.alphaThreshold !== undefined ? options.alphaThreshold : 32;
+  const minHoleArea = options.minHoleArea !== undefined ? options.minHoleArea : 6;
+  const total = width * height;
+
+  const mask = new Uint8Array(total);
+  for (let i = 0, p = 0; i < pixels.length; i += 4, p++) {
+    if (pixels[i + 3] >= threshold) {
+      mask[p] = 1;
+    }
+  }
+
+  // Micro-speckle noise cleanup:
+  // Identify isolated transparent pinholes (< minHoleArea pixels) completely enclosed inside the subject.
+  // We ONLY close tiny 1-5 pixel sensor noise/pinholes so they don't create jagged Potrace artifacts.
+  // Genuine transparent cutouts (>= 6px) are strictly left 0 (transparent).
+  if (minHoleArea > 1) {
+    const visited = new Uint8Array(total);
+    const q = new Int32Array(total);
+
+    for (let p = 0; p < total; p++) {
+      if (mask[p] === 0 && !visited[p]) {
+        let head = 0, tail = 0;
+        visited[p] = 1;
+        q[tail++] = p;
+
+        let touchesBorder = false;
+
+        while (head < tail) {
+          const curr = q[head++];
+          const cx = curr % width;
+          const cy = Math.floor(curr / width);
+
+          if (cx === 0 || cx === width - 1 || cy === 0 || cy === height - 1) {
+            touchesBorder = true;
+          }
+
+          if (cx > 0) {
+            const n = curr - 1;
+            if (!visited[n] && mask[n] === 0) { visited[n] = 1; q[tail++] = n; }
+          }
+          if (cx < width - 1) {
+            const n = curr + 1;
+            if (!visited[n] && mask[n] === 0) { visited[n] = 1; q[tail++] = n; }
+          }
+          if (cy > 0) {
+            const n = curr - width;
+            if (!visited[n] && mask[n] === 0) { visited[n] = 1; q[tail++] = n; }
+          }
+          if (cy < height - 1) {
+            const n = curr + width;
+            if (!visited[n] && mask[n] === 0) { visited[n] = 1; q[tail++] = n; }
+          }
+        }
+
+        // If this transparent cluster does NOT touch the outer border AND has < minHoleArea pixels:
+        // it is isolated single-pixel dust/noise, so seal it into the mask.
+        if (!touchesBorder && tail < minHoleArea) {
+          for (let k = 0; k < tail; k++) {
+            mask[q[k]] = 1;
+          }
+        }
+      }
+    }
+  }
+
+  return mask;
+}
+
+// Backward-compatible alias
+export const generateSolidSubjectMask = generateExactAlphaMask;

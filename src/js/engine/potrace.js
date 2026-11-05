@@ -49,7 +49,8 @@ var require_utils = __commonJS({
       return html;
     }
     function fixed(number) {
-      return number.toFixed(3).replace(".000", "");
+      var rounded = Math.round(number * 10) / 10;
+      return Object.is(rounded, -0) ? "0" : rounded.toString();
     }
     function mod(a, n) {
       return a >= n ? a % n : a >= 0 ? a : n - 1 - (-1 - a) % n;

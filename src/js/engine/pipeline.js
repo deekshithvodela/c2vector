@@ -5,7 +5,7 @@
  */
 
 import { resampleBicubic, bilateralDenoise, computeLuminance, rgbToHsv, hsvToRgb } from './image-ops.js';
-import { computeOtsuThreshold, generateMonochromeMap, generateBridgeStencilMap } from './tonal-studies.js';
+import { computeOtsuThreshold, generateMonochromeMap, generateBridgeStencilMap, generateExactAlphaMask } from './tonal-studies.js';
 import { computeDepthMap, computeCannyEdges } from './edge-depth.js';
 import { quantizePalette, mapPixelsToPaletteIndex, computeToneMatchIndex, rgbToHex } from './quantizer.js';
 import { buildMasterSvg, buildStudySvg, buildMultiToneStudySvg, buildColorPosterizeSvg, buildSeamlessPixelMatchSvg } from './bezier-tracer.js';
@@ -55,16 +55,17 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   const isTransparent = (totalBorderCount > 0 && (transparentBorderCount / totalBorderCount) >= 0.10) ||
                         ((transparentPixelCount / totalPixels) >= 0.005);
 
-  // Trace Foreground Subject Silhouette Mask (where alpha >= 64) for Transparent Underlays
+  // Trace Exact Alpha Mask for Transparent Underlays (Preserves 100% of internal & external cutouts)
   let silhouettePathD = null;
+  let exactAlphaMask = null;
   if (isTransparent) {
-    const silMask = new Uint8Array(targetHDWidth * targetHDHeight);
-    for (let i = 0; i < cleanPixels.length; i += 4) {
-      if (cleanPixels[i + 3] >= 64) silMask[i / 4] = 1;
-    }
-    silhouettePathD = traceMaskToPathD(silMask, targetHDWidth, targetHDHeight, {
+    exactAlphaMask = generateExactAlphaMask(cleanPixels, targetHDWidth, targetHDHeight, {
+      alphaThreshold: 32,
+      minHoleArea: 6
+    });
+    silhouettePathD = traceMaskToPathD(exactAlphaMask, targetHDWidth, targetHDHeight, {
       optCurve: true,
-      turdSize: 2,
+      turdSize: 4,
       optTolerance: 0.15,
       turnPolicy: 'minority'
     });
@@ -169,11 +170,32 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
 
   const tierMasks = [];
   for (let t = 0; t < palette.length; t++) {
-    const mask = new Uint8Array(targetHDWidth * targetHDHeight);
+    const rawMask = new Uint8Array(targetHDWidth * targetHDHeight);
     for (let i = 0; i < tierIndices.length; i++) {
-      if (cleanPixels[i * 4 + 3] >= 64 && tierIndices[i] === t) mask[i] = 1;
+      if (cleanPixels[i * 4 + 3] >= 32 && tierIndices[i] === t) rawMask[i] = 1;
     }
-    tierMasks.push(mask);
+
+    // Alpha-bounded 1px color trapping:
+    // Expand tier by 1px so adjacent color tiers overlap along shared boundaries,
+    // but strictly clamp to exactAlphaMask so no color ever bleeds into transparent cutouts.
+    const trappedMask = new Uint8Array(rawMask);
+    if (isTransparent && exactAlphaMask) {
+      for (let y = 1; y < targetHDHeight - 1; y++) {
+        const yOff = y * targetHDWidth;
+        for (let x = 1; x < targetHDWidth - 1; x++) {
+          const idx = yOff + x;
+          if (rawMask[idx] === 0 && exactAlphaMask[idx] === 1) {
+            if (
+              rawMask[idx - 1] === 1 || rawMask[idx + 1] === 1 ||
+              rawMask[idx - targetHDWidth] === 1 || rawMask[idx + targetHDWidth] === 1
+            ) {
+              trappedMask[idx] = 1;
+            }
+          }
+        }
+      }
+    }
+    tierMasks.push(trappedMask);
   }
 
   // Universal Vibrant Palette Calibration (Perceptual Contrast S-Curve & Adaptive Chroma Expansion)
@@ -346,7 +368,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   for (let t = 0; t < posterColorPalette.length; t++) {
     const mask = new Uint8Array(targetHDWidth * targetHDHeight);
     for (let i = 0; i < posterIndices.length; i++) {
-      if (cleanPixels[i * 4 + 3] >= 64 && posterIndices[i] === t) mask[i] = 1;
+      if (cleanPixels[i * 4 + 3] >= 32 && posterIndices[i] === t) mask[i] = 1;
     }
     posterLayers.push({
       name: `Color-Poster-Tier-${t}`,

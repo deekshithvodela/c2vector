@@ -16,6 +16,11 @@ archive/
 # Build outputs
 dist/
 
+# Test assets, input seeds and generated debug output
+input/
+output/
+testing/
+
 # Ephemeral test results and scratch runs in scripts
 scripts/lighthouse_results.json
 scripts/*.html

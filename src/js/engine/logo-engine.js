@@ -10,7 +10,7 @@
 
 import { traceMaskToPathD } from './potrace.js';
 import { rgbToHsv, hsvToRgb, computeLuminance } from './image-ops.js';
-import { computeOtsuThreshold, generateBridgeStencilMap } from './tonal-studies.js';
+import { computeOtsuThreshold, generateBridgeStencilMap, generateExactAlphaMask } from './tonal-studies.js';
 
 // Convert RGB to CIELAB for perceptual color distance
 function rgbToLab(r, g, b) {
@@ -347,30 +347,50 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   const allVectorLayers = [];
   const knockoutBackground = options.knockoutBackground !== undefined ? Boolean(options.knockoutBackground) : isTransparentLogo;
 
-  // Trace Foreground Subject Silhouette Mask (where alpha >= 64) for Transparent Underlays
+  // Trace Exact Alpha Mask for Transparent Underlays (Preserves 100% of internal & external cutouts)
   let silhouettePathD = null;
+  let exactAlphaMask = null;
   if (isTransparentLogo) {
-    const silMask = new Uint8Array(totalPixels);
-    for (let i = 0; i < rawPixels.length; i += 4) {
-      if (rawPixels[i + 3] >= 64) silMask[i / 4] = 1;
-    }
-    silhouettePathD = traceMaskToPathD(silMask, rawWidth, rawHeight, {
+    exactAlphaMask = generateExactAlphaMask(rawPixels, rawWidth, rawHeight, {
+      alphaThreshold: 32,
+      minHoleArea: 6
+    });
+    silhouettePathD = traceMaskToPathD(exactAlphaMask, rawWidth, rawHeight, {
       optCurve: true,
       alphaMax: 0.15,
       optTolerance: 0.08,
-      turdSize: 2,
+      turdSize: 4,
       turnPolicy: 'minority'
     });
   }
 
   for (let c = 0; c < spotColors.length; c++) {
     const col = spotColors[c];
-    const mask = new Uint8Array(totalPixels);
+    const rawMask = new Uint8Array(totalPixels);
     for (let p = 0; p < totalPixels; p++) {
-      if (pixelTierMap[p] === c) mask[p] = 1;
+      if (pixelTierMap[p] === c) rawMask[p] = 1;
     }
 
-    const pathD = traceMaskToPathD(mask, rawWidth, rawHeight, {
+    // Alpha-bounded color trapping (1px spread clamped to exactAlphaMask)
+    const trappedMask = new Uint8Array(rawMask);
+    if (isTransparentLogo && exactAlphaMask) {
+      for (let y = 1; y < rawHeight - 1; y++) {
+        const yOff = y * rawWidth;
+        for (let x = 1; x < rawWidth - 1; x++) {
+          const idx = yOff + x;
+          if (rawMask[idx] === 0 && exactAlphaMask[idx] === 1) {
+            if (
+              rawMask[idx - 1] === 1 || rawMask[idx + 1] === 1 ||
+              rawMask[idx - rawWidth] === 1 || rawMask[idx + rawWidth] === 1
+            ) {
+              trappedMask[idx] = 1;
+            }
+          }
+        }
+      }
+    }
+
+    const pathD = traceMaskToPathD(trappedMask, rawWidth, rawHeight, {
       optCurve: true,
       alphaMax: 0.15,
       optTolerance: 0.08,

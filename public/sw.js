@@ -3,7 +3,7 @@
  * Provides 100% offline capability and instant app launching
  */
 
-const CACHE_NAME = 'c2vector-v11';
+const CACHE_NAME = 'c2vector-v12';
 const PRECACHE_ASSETS = [
   './',
   './index.html',
