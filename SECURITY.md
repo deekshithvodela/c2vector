@@ -7,8 +7,10 @@
 ### Core Security Guarantees:
 1. **Zero Server Uploads:** Your photographs, corporate logos, vector paths, and compiled PDFs never travel over the network to any remote server or cloud bucket. All calculations execute locally inside your browser's native Web Worker threads.
 2. **Ephemeral Memory:** In-memory image buffers, canvas data, and vector streams exist solely within browser memory and are automatically reclaimed when the session tab is closed or reloaded.
-3. **Zero XSS Sinks:** The application avoids dynamic evaluation (`eval`, `document.write`) and raw DOM string sinks (`innerHTML` on unsanitized inputs), using safe DOM manipulation APIs (`classList`, `setAttribute`).
-4. **Zero Third-Party Ad Trackers:** C2Vector sets zero advertising cookies, fingerprinting pixels, or invasive telemetry. Anonymous, privacy-first page counting is handled via GoatCounter without logging Personal Identifiable Information (PII).
+3. **Zero XSS Sinks:** The application avoids dynamic evaluation (`eval`, `new Function`, `document.write`) and raw DOM string sinks (`innerHTML` on unsanitized inputs), using safe DOM manipulation APIs (`classList`, `setAttribute`).
+4. **Zero Runtime npm Dependencies:** The deployed static application bundle ships zero third-party runtime npm packages (`vite`, `playwright`, and `potrace` in `package.json` are build/dev-only tools; browser Potrace is self-contained with all Node/Jimp dependencies stubbed out).
+5. **7-Vector Privacy & Artifact Hygiene:** Every release build (`dist/`) is audited for zero leaked local machine paths, zero internal build/agent paths, zero private IPs, zero sourcemaps, and zero credentials.
+6. **Zero Third-Party Ad Trackers:** C2Vector sets zero advertising cookies, fingerprinting pixels, or invasive telemetry. Anonymous, privacy-first page counting is handled via GoatCounter without logging Personal Identifiable Information (PII).
 
 ---
 
@@ -18,8 +20,8 @@ Only the current version hosted on the `main` branch and served via GitHub Pages
 
 | Version | Supported |
 |---|---|
-| Latest `main` / `c2vector-v6` | ✅ Yes |
-| Historical / Pre-v6 releases | ❌ No |
+| Latest `main` / `c2vector-v12` | ✅ Yes |
+| Historical / Pre-v12 releases | ❌ No |
 
 ---
 

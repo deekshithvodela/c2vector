@@ -20,7 +20,12 @@ dist/
 input/
 output/
 testing/
+test_images/
 
 # Ephemeral test results and scratch runs in scripts
 scripts/lighthouse_results.json
 scripts/*.html
+
+# Test vector outputs and user sample files
+master_logo_vector*.svg
+master_logo_vector (2).svg

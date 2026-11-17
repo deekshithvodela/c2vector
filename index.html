@@ -90,7 +90,7 @@
       "Seamless pixel match with anti-grid curve smoothing",
       "Canny sub-pixel hairline edges with dynamic chromatic glaze",
       "Continuous cubic Bézier curve fitting with G1 continuity",
-      "Infinitely scalable 12-page vector PDF compiler",
+      "Infinitely scalable 13-page vector PDF compiler",
       "High-res PNG offscreen canvas exporter (1x, 2x, 4x)"
     ]
   }
@@ -99,7 +99,7 @@
   <!-- Typography Preconnect -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
   <link rel="stylesheet" href="/src/css/style.css">
@@ -138,7 +138,7 @@
 
         <div class="header-utilities">
           <!-- Install PWA Button (Icon Only, 34px, Hidden if Installed) -->
-          <button id="btnInstallPwa" class="btn btn-secondary btn-icon-only" style="display:none;" aria-label="Install App" title="Install c2vector as App">
+          <button type="button" id="btnInstallPwa" class="btn btn-secondary btn-icon-only" style="display:none;" aria-label="Install App" title="Install c2vector as App">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
@@ -147,7 +147,7 @@
           </button>
 
           <!-- Dark/Light Mode Theme Toggle Button -->
-          <button id="btnThemeToggle" class="theme-toggle-btn" aria-label="Switch to Light Mode" title="Toggle Dark/Light Mode">
+          <button type="button" id="btnThemeToggle" class="theme-toggle-btn" aria-label="Switch to Light Mode" title="Toggle Dark/Light Mode">
             <!-- Sun Icon (shown in dark mode to switch to light) -->
             <svg id="themeIconSun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="5"></circle>
@@ -311,19 +311,19 @@
                 <label for="edgeOpacitySlider" class="edge-opacity-label">Edge Glaze:</label>
                 <input type="range" id="edgeOpacitySlider" min="0" max="100" value="75" step="1" aria-label="Adjust chromatic contour glaze opacity" class="edge-opacity-slider">
                 <span id="edgeOpacityVal" class="edge-opacity-val">75%</span>
-                <button id="btnToggleEdges" class="contour-toggle-btn active" title="Toggle chromatic edge outlines on/off" aria-label="Toggle chromatic edge outlines">Visible</button>
+                <button type="button" id="btnToggleEdges" class="contour-toggle-btn active" title="Toggle chromatic edge outlines on/off" aria-label="Toggle chromatic edge outlines">Visible</button>
               </div>
 
               <div class="viewer-controls" role="toolbar" aria-label="Magnification controls">
-                <button class="zoom-btn active" data-zoom="1" aria-label="1x Zoom">1x</button>
-                <button class="zoom-btn" data-zoom="2" aria-label="2x Zoom">2x</button>
-                <button class="zoom-btn" data-zoom="4" aria-label="4x Zoom">4x</button>
-                <button class="zoom-btn" data-zoom="8" aria-label="8x Zoom">8x</button>
-                <button id="btnToggleGrid" class="zoom-btn" aria-label="Toggle background removal and checkerboard grid" title="Toggle background removal and transparent SVG export" aria-pressed="false">
+                <button type="button" class="zoom-btn active" data-zoom="1" aria-label="1x Zoom">1x</button>
+                <button type="button" class="zoom-btn" data-zoom="2" aria-label="2x Zoom">2x</button>
+                <button type="button" class="zoom-btn" data-zoom="4" aria-label="4x Zoom">4x</button>
+                <button type="button" class="zoom-btn" data-zoom="8" aria-label="8x Zoom">8x</button>
+                <button type="button" id="btnToggleGrid" class="zoom-btn" aria-label="Toggle background removal and checkerboard grid" title="Toggle background removal and transparent SVG export" aria-pressed="false">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
                   <span>Grid</span>
                 </button>
-                <button id="btnCenterCanvas" class="zoom-btn" aria-label="Center artwork on canvas and reset pan">
+                <button type="button" id="btnCenterCanvas" class="zoom-btn" aria-label="Center artwork on canvas and reset pan">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="12" cy="12" r="7"></circle>
                     <line x1="12" y1="2" x2="12" y2="6"></line>
@@ -340,18 +340,19 @@
 
           <!-- Concise Artboard Tab Navigation Placed Right Below File Name & Toolbar -->
           <nav class="tab-nav" id="tabNav" role="tablist" aria-label="Vector Artboard Selection">
-            <button class="tab-btn active" data-artboard="masterVibrant" role="tab" aria-selected="true" title="Master Vibrant Vector v2 — Calibrated with Tone Match Index">Vibrant v2</button>
-            <button class="tab-btn" data-artboard="masterFaithful" role="tab" aria-selected="false" title="Master Faithful Vector — Authentic 64 Tiers Source Match">Faithful</button>
-            <button class="tab-btn" data-artboard="posterizeColor" role="tab" aria-selected="false" title="Color Posterize Print Plate (8-Tone) — Bold Chromatic Planes">8-Tone Color</button>
-            <button class="tab-btn" data-artboard="pixelMatch" role="tab" aria-selected="false" title="Seamless Pixel-Match Vector (Anti-Grid HD) — Zero Grid Lines">Pixel Match</button>
-            <button class="tab-btn" data-artboard="monochrome" role="tab" aria-selected="false" title="1-Bit Otsu Monochrome Stencil — Solid B&W Mask">1-Bit Mono</button>
-            <button class="tab-btn" data-artboard="posterize4" role="tab" aria-selected="false" title="4-Tone Posterize Print Plate (Positive) — Quantized Grayscale">4-Tone</button>
-            <button class="tab-btn" data-artboard="posterize4Inverted" role="tab" aria-selected="false" title="4-Tone Negative Plate (Inverted) — For Dark Apparel & Laser">4-Tone Neg</button>
-            <button class="tab-btn" data-artboard="posterize8" role="tab" aria-selected="false" title="8-Tone Posterize Print Plate (Positive) — Graduated Grayscale">8-Tone</button>
-            <button class="tab-btn" data-artboard="posterize8Inverted" role="tab" aria-selected="false" title="8-Tone Negative Plate (Inverted) — Discharge Ink Plate">8-Tone Neg</button>
-            <button class="tab-btn" data-artboard="stencil" role="tab" aria-selected="false" title="Bridge-Connected Cut Stencil — Island-Bridged Laser Paths">Stencil</button>
-            <button class="tab-btn" data-artboard="cannyEdges" role="tab" aria-selected="false" title="Canny Sub-Pixel Hairline Edges — 1-px Ridge Outlines">Canny Edges</button>
-            <button class="tab-btn" data-artboard="chromaticEdges" role="tab" aria-selected="false" title="Translucent Chromatic Contours — 70%-80% Opacity Glaze">Contours</button>
+            <button type="button" class="tab-btn active" data-artboard="masterVibrant" role="tab" aria-selected="true" title="Master Vibrant Vector v2 — Calibrated with Tone Match Index">Vibrant v2</button>
+            <button type="button" class="tab-btn" data-artboard="masterFaithful" role="tab" aria-selected="false" title="Master Faithful Vector — Authentic 64 Tiers Source Match">Faithful</button>
+            <button type="button" class="tab-btn" data-artboard="posterizeColor" role="tab" aria-selected="false" title="Color Posterize Print Plate (8-Tone) — Bold Chromatic Planes">8-Tone Color</button>
+            <button type="button" class="tab-btn" data-artboard="pixelMatch" role="tab" aria-selected="false" title="Seamless Pixel-Match Vector (Anti-Grid HD) — Zero Grid Lines">Pixel Match</button>
+            <button type="button" class="tab-btn" data-artboard="monochrome" role="tab" aria-selected="false" title="1-Bit Otsu Monochrome Stencil — Solid B&amp;W Mask">1-Bit Mono</button>
+            <button type="button" class="tab-btn" data-artboard="twoTone" role="tab" aria-selected="false" title="2-Tone Duotone Print Plate — Key &amp; Midtone Inks">2-Tone</button>
+            <button type="button" class="tab-btn" data-artboard="posterize4" role="tab" aria-selected="false" title="4-Tone Posterize Print Plate (Positive) — Quantized Grayscale">4-Tone</button>
+            <button type="button" class="tab-btn" data-artboard="posterize4Inverted" role="tab" aria-selected="false" title="4-Tone Negative Plate (Inverted) — For Dark Apparel &amp; Laser">4-Tone Neg</button>
+            <button type="button" class="tab-btn" data-artboard="posterize8" role="tab" aria-selected="false" title="8-Tone Posterize Print Plate (Positive) — Graduated Grayscale">8-Tone</button>
+            <button type="button" class="tab-btn" data-artboard="posterize8Inverted" role="tab" aria-selected="false" title="8-Tone Negative Plate (Inverted) — Discharge Ink Plate">8-Tone Neg</button>
+            <button type="button" class="tab-btn" data-artboard="stencil" role="tab" aria-selected="false" title="Bridge-Connected Cut Stencil — Island-Bridged Laser Paths">Stencil</button>
+            <button type="button" class="tab-btn" data-artboard="cannyEdges" role="tab" aria-selected="false" title="Canny Sub-Pixel Hairline Edges — 1-px Ridge Outlines">Canny Edges</button>
+            <button type="button" class="tab-btn" data-artboard="chromaticEdges" role="tab" aria-selected="false" title="Translucent Chromatic Contours — 70%-80% Opacity Glaze">Contours</button>
           </nav>
 
           <div class="viewport-canvas" id="viewport" tabindex="0" role="region" aria-label="Scalable vector artboard canvas">
@@ -365,7 +366,7 @@
           <div>
             <div class="panel-section-title">Primary Vector Export</div>
             <div style="display:flex; flex-direction:column; gap:0.65rem;">
-              <button id="btnDownloadSvg" class="btn btn-primary" style="width:100%;">
+              <button type="button" id="btnDownloadSvg" class="btn btn-primary" style="width:100%;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="7 10 12 15 17 10"></polyline>
@@ -374,7 +375,7 @@
                 <span>Download Active SVG</span>
               </button>
 
-              <button id="btnDownloadPdf" class="btn btn-pdf" style="width:100%;">
+              <button type="button" id="btnDownloadPdf" class="btn btn-pdf" style="width:100%;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                   <polyline points="14 2 14 8 20 8"></polyline>
@@ -385,7 +386,7 @@
                 <span>Compile Master Vector PDF</span>
               </button>
 
-              <button id="btnDownloadAllSvg" class="btn btn-secondary" style="width:100%;">
+              <button type="button" id="btnDownloadAllSvg" class="btn btn-secondary" style="width:100%;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polyline points="21 8 21 21 3 21 3 8"></polyline>
                   <rect x="1" y="3" width="22" height="5"></rect>
@@ -398,7 +399,7 @@
 
           <div>
             <div class="panel-section-title">Secondary Raster Export</div>
-            <button id="btnOpenPngModal" class="btn btn-secondary" style="width:100%;">
+            <button type="button" id="btnOpenPngModal" class="btn btn-secondary" style="width:100%;">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                 <circle cx="8.5" cy="8.5" r="1.5"></circle>
@@ -478,8 +479,8 @@
         </fieldset>
 
         <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
-          <button id="btnClosePngModal" class="btn btn-secondary">Cancel</button>
-          <button id="btnConfirmPng" class="btn btn-primary">Download PNG</button>
+          <button type="button" id="btnClosePngModal" class="btn btn-secondary">Cancel</button>
+          <button type="button" id="btnConfirmPng" class="btn btn-primary">Download PNG</button>
         </div>
       </div>
     </div>
@@ -531,7 +532,7 @@
 
   <!-- Floating Toast Notification (#copyToast) -->
   <div id="copyToast" class="copy-toast" role="status" aria-live="polite">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <polyline points="20 6 9 17 4 12"></polyline>
     </svg>
     <span id="toastMsg">Copied to clipboard!</span>
@@ -549,7 +550,7 @@
           </svg>
           <span>MIT License</span>
         </h3>
-        <button class="modal-close-btn" data-modal-close aria-label="Close MIT License modal">✕</button>
+        <button type="button" class="modal-close-btn" data-modal-close aria-label="Close MIT License modal">✕</button>
       </div>
       <div class="modal-body">
         <p>Copyright (c) 2026 Deekshith Vodela</p>
@@ -572,7 +573,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.</pre>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-close>Close</button>
       </div>
     </div>
   </div>
@@ -588,7 +589,7 @@ SOFTWARE.</pre>
           </svg>
           <span>Privacy Policy &amp; Security Guarantee</span>
         </h3>
-        <button class="modal-close-btn" data-modal-close aria-label="Close Privacy Policy modal">✕</button>
+        <button type="button" class="modal-close-btn" data-modal-close aria-label="Close Privacy Policy modal">✕</button>
       </div>
       <div class="modal-body">
         <h4>100% In-Browser Execution</h4>
@@ -604,7 +605,7 @@ SOFTWARE.</pre>
         <p>Only your aesthetic UI theme preference (dark/light mode) is stored locally on your device via <code>localStorage</code> to prevent screen flickering upon future visits.</p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-close>Close</button>
       </div>
     </div>
   </div>
@@ -621,7 +622,7 @@ SOFTWARE.</pre>
           </svg>
           <span>Disclosure &amp; Technical Specifications</span>
         </h3>
-        <button class="modal-close-btn" data-modal-close aria-label="Close Disclosure modal">✕</button>
+        <button type="button" class="modal-close-btn" data-modal-close aria-label="Close Disclosure modal">✕</button>
       </div>
       <div class="modal-body">
         <h4>Deterministic Mathematical Vectorization (0% AI)</h4>
@@ -640,7 +641,7 @@ SOFTWARE.</pre>
         <p>c2vector is built and maintained as an independent open-source project by Deekshith Vodela. Contributions and issue reports are welcomed on GitHub.</p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-close>Close</button>
       </div>
     </div>
   </div>

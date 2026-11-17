@@ -25,6 +25,13 @@ export function rgbToLab(r, g, b) {
   return [L, a, bVal];
 }
 
+export function deltaE(lab1, lab2) {
+  const dL = lab1[0] - lab2[0];
+  const da = lab1[1] - lab2[1];
+  const db = lab1[2] - lab2[2];
+  return Math.sqrt(dL * dL + da * da + db * db);
+}
+
 export function rgbToHex(r, g, b) {
   return '#' + [r, g, b].map(x => {
     const hex = Math.min(255, Math.max(0, Math.round(x))).toString(16);
@@ -33,7 +40,16 @@ export function rgbToHex(r, g, b) {
 }
 
 export function hexToRgb(hex) {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!hex || typeof hex !== 'string') return [0, 0, 0];
+  const clean = hex.replace('#', '');
+  if (clean.length === 3) {
+    return [
+      parseInt(clean[0] + clean[0], 16) || 0,
+      parseInt(clean[1] + clean[1], 16) || 0,
+      parseInt(clean[2] + clean[2], 16) || 0
+    ];
+  }
+  const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(clean);
   return result ? [
     parseInt(result[1], 16),
     parseInt(result[2], 16),

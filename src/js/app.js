@@ -33,6 +33,11 @@ const ARTBOARD_METADATA = {
     subtitle: 'Solid High-Contrast Black & White Vector Mask',
     filename: 'otsu_monochrome_mask.svg'
   },
+  twoTone: {
+    title: '2-Tone Duotone Print Plate (Key + Midtone Inks)',
+    subtitle: 'Discrete 2-Level Ink Separation (Deep Shadows & Midtones)',
+    filename: 'twotone_duotone_plate.svg'
+  },
   posterize4: {
     title: '4-Tone Posterize Print Plate (Positive)',
     subtitle: 'Quantized Grayscale for Screenprint & Litho',
@@ -97,6 +102,11 @@ const LOGO_ARTBOARD_METADATA = {
     subtitle: 'Solid Black Vector Artwork on White Contrast Plate',
     filename: 'logo_monochrome_silhouette.svg'
   },
+  twoTone: {
+    title: '2-Tone Duotone Print Plate (Key + Midtone Inks)',
+    subtitle: 'Discrete 2-Level Ink Separation (Deep Shadows & Midtones)',
+    filename: 'logo_twotone_duotone.svg'
+  },
   posterize4: {
     title: '4-Tone Grayscale Plate (Screenprint Separation)',
     subtitle: 'Discrete 4-Level Ink Steps (Shadows, Midtones, Highlights)',
@@ -150,6 +160,7 @@ let isGridOn = false;
 let deferredPrompt = null;
 let currentEdgeOpacity = 0.75;
 let areEdgesVisible = true;
+let currentSourceFileName = 'c2vector_artwork';
 
 // DOM References
 const dropzone = document.getElementById('dropzone');
@@ -451,6 +462,9 @@ async function processImageFile(file, mode = currentEngineMode) {
 }
 
 async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
+  if (imageName) {
+    currentSourceFileName = imageName.replace(/\.[^/.]+$/, '').trim();
+  }
   showProgress();
 
   const img = new Image();
@@ -923,12 +937,15 @@ window.__c2vectorState = {
   set currentZoom(v) { currentZoom = v; },
   get isGridOn() { return isGridOn; },
   set isGridOn(v) { isGridOn = v; },
+  get currentSourceFileName() { return currentSourceFileName; },
+  set currentSourceFileName(v) { currentSourceFileName = v; },
   get currentResults() { return currentResults; },
   get baseViewBox() { return baseViewBox; },
   applySvgTransform,
   resetPanAndZoom,
   renderViewBox,
-  formatDownloadableSvg
+  formatDownloadableSvg,
+  getDynamicDownloadFilename
 };
 
 tabNav?.addEventListener('click', (e) => {
@@ -1077,6 +1094,31 @@ btnCenterCanvas?.addEventListener('click', () => {
 
 // Export Triggers
 /**
+ * Generates dynamic production download filenames according to standard:
+ * {original_filename}_{mode}_{artboard}_c2vector_DV.{ext}
+ */
+export function getDynamicDownloadFilename(artboardKey, ext = 'svg', scale = null) {
+  const isLogo = currentResults && currentResults.mode === 'logo';
+  const mode = isLogo ? 'logo' : 'photo';
+  const rawBase = (currentSourceFileName || 'c2vector_artwork')
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  const baseName = rawBase || 'artwork';
+  const cleanArtboard = (artboardKey || 'masterVibrant')
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  if (ext === 'pdf') {
+    return `${baseName}_${mode}_master_suite_c2vector_DV.pdf`;
+  }
+  if (scale) {
+    return `${baseName}_${mode}_${cleanArtboard}_c2vector_DV@${scale}x.${ext}`;
+  }
+  return `${baseName}_${mode}_${cleanArtboard}_c2vector_DV.${ext}`;
+}
+
+/**
  * Formats an SVG string into an official, standalone SVG 1.1 vector document
  * Complete with XML declaration and W3C SVG 1.1 DTD preamble for 100% vector fidelity in
  * Adobe Illustrator, CorelDRAW, Inkscape, Figma, Canva, and CNC/laser plotters.
@@ -1101,15 +1143,13 @@ btnDownloadSvg?.addEventListener('click', () => {
   if (!currentResults) return;
   const rawSvg = currentResults.svgs[activeArtboard];
   const svgStr = formatDownloadableSvg(rawSvg);
-  const isLogo = currentResults && currentResults.mode === 'logo';
-  const metaMap = isLogo ? LOGO_ARTBOARD_METADATA : ARTBOARD_METADATA;
-  const meta = metaMap[activeArtboard] || { filename: `${activeArtboard}.svg` };
+  const filename = getDynamicDownloadFilename(activeArtboard, 'svg');
 
   const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = meta.filename;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1123,7 +1163,8 @@ btnDownloadPdf?.addEventListener('click', async () => {
   btnDownloadPdf.innerHTML = `<span>Compiling Vector PDF...</span>`;
 
   try {
-    await compileMasterVectorPdf(currentResults, 'c2vector_master_suite.pdf', ({ current, total, text }) => {
+    const pdfFilename = getDynamicDownloadFilename('suite', 'pdf');
+    await compileMasterVectorPdf(currentResults, pdfFilename, ({ current, total, text }) => {
       btnDownloadPdf.innerHTML = `<span>Page ${current}/${total}: ${text}</span>`;
     });
   } catch (err) {
@@ -1138,12 +1179,10 @@ btnDownloadPdf?.addEventListener('click', async () => {
 btnDownloadAllSvg?.addEventListener('click', async () => {
   if (!currentResults) return;
   const keys = Object.keys(currentResults.svgs);
-  const isLogo = currentResults && currentResults.mode === 'logo';
-  const metaMap = isLogo ? LOGO_ARTBOARD_METADATA : ARTBOARD_METADATA;
 
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
-    const meta = metaMap[key] || { filename: `${key}.svg` };
+    const filename = getDynamicDownloadFilename(key, 'svg');
     const rawSvg = currentResults.svgs[key];
     if (!rawSvg) continue;
     const svgStr = formatDownloadableSvg(rawSvg);
@@ -1152,7 +1191,7 @@ btnDownloadAllSvg?.addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = meta.filename;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1182,10 +1221,7 @@ btnConfirmPng?.addEventListener('click', async () => {
   const checked = document.querySelector('input[name="pngScale"]:checked');
   const scale = parseInt(checked?.value || '2', 10);
   const svgStr = currentResults.svgs[activeArtboard];
-  const isLogo = currentResults && currentResults.mode === 'logo';
-  const metaMap = isLogo ? LOGO_ARTBOARD_METADATA : ARTBOARD_METADATA;
-  const meta = metaMap[activeArtboard] || { filename: `${activeArtboard}.svg` };
-  const filename = meta.filename.replace('.svg', `@${scale}x.png`);
+  const filename = getDynamicDownloadFilename(activeArtboard, 'png', scale);
 
   const origText = btnConfirmPng.textContent;
   btnConfirmPng.disabled = true;

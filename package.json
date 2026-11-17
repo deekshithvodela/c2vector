@@ -21,8 +21,8 @@
   "author": "Deekshith Vodela",
   "license": "MIT",
   "devDependencies": {
+    "playwright": "^1.65.1",
     "potrace": "^2.1.8",
     "vite": "^5.4.21"
   }
 }
-

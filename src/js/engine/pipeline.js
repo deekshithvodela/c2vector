@@ -4,9 +4,8 @@
  * Universal Continuous Bézier Vector Engine & Discrete Production Print Specifications
  */
 
-import { resampleBicubic, bilateralDenoise, computeLuminance, rgbToHsv, hsvToRgb } from './image-ops.js';
+import { resampleBicubic, bilateralDenoise, computeLuminance, rgbToHsv, hsvToRgb, computeCannyEdges } from './image-ops.js';
 import { computeOtsuThreshold, generateMonochromeMap, generateBridgeStencilMap, generateExactAlphaMask } from './tonal-studies.js';
-import { computeDepthMap, computeCannyEdges } from './edge-depth.js';
 import { quantizePalette, mapPixelsToPaletteIndex, computeToneMatchIndex, rgbToHex } from './quantizer.js';
 import { buildMasterSvg, buildStudySvg, buildMultiToneStudySvg, buildColorPosterizeSvg, buildSeamlessPixelMatchSvg } from './bezier-tracer.js';
 import { traceMaskToPathD } from './potrace.js';
@@ -23,7 +22,24 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   const hdPixels = (rawWidth === targetHDWidth && rawHeight === targetHDHeight)
     ? rawPixels
     : resampleBicubic(rawPixels, rawWidth, rawHeight, targetHDWidth, targetHDHeight);
-  const cleanPixels = bilateralDenoise(hdPixels, targetHDWidth, targetHDHeight, 1.5, 22.0);
+
+  // Check if image is achromatic line art (drawings, black ink, stippling on light or transparent ground)
+  let chromaSum = 0;
+  let activePixels = 0;
+  for (let i = 0; i < hdPixels.length; i += 4) {
+    if (hdPixels[i + 3] >= 32) {
+      activePixels++;
+      const maxC = Math.max(hdPixels[i], hdPixels[i + 1], hdPixels[i + 2]);
+      const minC = Math.min(hdPixels[i], hdPixels[i + 1], hdPixels[i + 2]);
+      chromaSum += (maxC - minC);
+    }
+  }
+  const isAchromaticArt = activePixels > 0 && (chromaSum / activePixels) < 14;
+
+  // On line-art, bypass bilateral blur to preserve 100% of 1px hairline edges and micro-details
+  const cleanPixels = isAchromaticArt
+    ? hdPixels
+    : bilateralDenoise(hdPixels, targetHDWidth, targetHDHeight, 1.5, 22.0);
 
   // Detect canvas perimeter and overall alpha transparency
   let transparentBorderCount = 0;
@@ -61,12 +77,13 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   if (isTransparent) {
     exactAlphaMask = generateExactAlphaMask(cleanPixels, targetHDWidth, targetHDHeight, {
       alphaThreshold: 32,
-      minHoleArea: 6
+      minHoleArea: isAchromaticArt ? 0 : 6
     });
     silhouettePathD = traceMaskToPathD(exactAlphaMask, targetHDWidth, targetHDHeight, {
       optCurve: true,
-      turdSize: 4,
-      optTolerance: 0.15,
+      turdSize: isAchromaticArt ? 0 : 4,
+      optTolerance: isAchromaticArt ? 0.10 : 0.15,
+      alphaMax: isAchromaticArt ? 0.72 : 0.15,
       turnPolicy: 'minority'
     });
   }
@@ -97,14 +114,18 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     color: col,
     mask: p4Masks[idx],
     opacity: 1.0,
-    turdSize: 3
+    turdSize: isAchromaticArt ? 0 : 3,
+    optTolerance: isAchromaticArt ? 0.10 : 0.20,
+    alphaMax: isAchromaticArt ? 0.72 : 0.15
   }));
   const p4InvLayers = p4InvColors.map((col, idx) => ({
     name: `BW-Inverted-Tier-${idx}`,
     color: col,
     mask: p4Masks[idx],
     opacity: 1.0,
-    turdSize: 3
+    turdSize: isAchromaticArt ? 0 : 3,
+    optTolerance: isAchromaticArt ? 0.10 : 0.20,
+    alphaMax: isAchromaticArt ? 0.72 : 0.15
   }));
 
   // Compute 8-Tone Grayscale Masks (ignoring transparent pixels)
@@ -122,19 +143,43 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     color: col,
     mask: p8Masks[idx],
     opacity: 1.0,
-    turdSize: 3
+    turdSize: isAchromaticArt ? 0 : 3,
+    optTolerance: isAchromaticArt ? 0.10 : 0.20,
+    alphaMax: isAchromaticArt ? 0.72 : 0.15
   }));
   const p8InvLayers = p8InvColors.map((col, idx) => ({
     name: `BW-Inverted-Gradation-${idx}`,
     color: col,
     mask: p8Masks[idx],
     opacity: 1.0,
-    turdSize: 3
+    turdSize: isAchromaticArt ? 0 : 3,
+    optTolerance: isAchromaticArt ? 0.10 : 0.20,
+    alphaMax: isAchromaticArt ? 0.72 : 0.15
   }));
 
   // Build Study SVGs (Dual Solid & Transparent Variants)
   const monoSolidSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', '#ffffff', monoMap);
   const monoTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', null, monoMap, {}, silhouettePathD);
+
+  // 2-Tone Duotone Print Plate (Key Shadow Ink + Midtone Modeling Ink)
+  const twoToneDarkMask = new Uint8Array(targetHDWidth * targetHDHeight);
+  const twoToneMidMask = new Uint8Array(targetHDWidth * targetHDHeight);
+  for (let p = 0, i = 0; i < cleanPixels.length; i += 4, p++) {
+    const a = cleanPixels[i + 3];
+    if (a < 64) continue;
+    const lum = computeLuminance(cleanPixels[i], cleanPixels[i + 1], cleanPixels[i + 2]);
+    if (lum < 85 && a >= 128) {
+      twoToneDarkMask[p] = 1;
+    } else if (lum < 195 || a >= 64) {
+      twoToneMidMask[p] = 1;
+    }
+  }
+  const ttLayers = [
+    { name: 'Duotone-Midtone', color: '#666666', mask: (isAchromaticArt ? new Uint8Array(targetHDWidth * targetHDHeight) : twoToneMidMask), turdSize: isAchromaticArt ? 0 : 2, optTolerance: isAchromaticArt ? 0.10 : 0.20, alphaMax: isAchromaticArt ? 0.72 : 0.15 },
+    { name: 'Duotone-KeyDark', color: '#000000', mask: (isAchromaticArt ? monoMap : twoToneDarkMask), turdSize: isAchromaticArt ? 0 : 2, optTolerance: isAchromaticArt ? 0.10 : 0.20, alphaMax: isAchromaticArt ? 0.72 : 0.15 }
+  ];
+  const twoToneSolidSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, ttLayers, '#ffffff');
+  const twoToneTransparentSvg = buildMultiToneStudySvg(targetHDWidth, targetHDHeight, ttLayers, null, silhouettePathD, '#ffffff');
 
   const stencilSolidSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', '#ffffff', stencilMap);
   const stencilTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#000000', null, stencilMap, {}, silhouettePathD);
@@ -165,7 +210,8 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
 
   // STEP 4: COLOR QUANTIZATION & TONE MATCH INDEX
   progressCallback({ step: 4, name: 'Color Quantization & Tone Match Index', pct: 75 });
-  const palette = quantizePalette(cleanPixels, targetTiers);
+  const effectiveTiers = isAchromaticArt ? Math.min(targetTiers, 8) : targetTiers;
+  const palette = quantizePalette(cleanPixels, effectiveTiers);
   const tierIndices = mapPixelsToPaletteIndex(cleanPixels, palette);
 
   const tierMasks = [];
@@ -374,7 +420,9 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
       name: `Color-Poster-Tier-${t}`,
       color: posterColorPalette[t].hex,
       mask: mask,
-      turdSize: 4
+      turdSize: isAchromaticArt ? (t === 0 ? 1 : 3) : 4,
+      optTolerance: isAchromaticArt ? 0.10 : 0.25,
+      alphaMax: isAchromaticArt ? 0.72 : 0.15
     });
   }
   const posterBaseColor = posterColorPalette[0] ? posterColorPalette[0].hex : '#000000';
@@ -398,11 +446,18 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   const pixelMatchTransparentSvg = buildSeamlessPixelMatchSvg(targetHDWidth, targetHDHeight, pixelMatchLayers, null, silhouettePathD);
 
   // STEP 6: BUILD ALL STANDALONE SVG DELIVERABLES
-  const masterFaithfulSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, defaultSubstrate);
-  const masterFaithfulTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, null, silhouettePathD);
+  const masterOpts = isAchromaticArt
+    ? {
+        tierTurdSize: (t) => (t === 0 ? 1 : 3),
+        optTolerance: 0.10,
+        alphaMax: 0.72
+      }
+    : {};
+  const masterFaithfulSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, defaultSubstrate, null, masterOpts);
+  const masterFaithfulTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, palette, tierMasks, chromaticEdgePaths, null, silhouettePathD, masterOpts);
 
-  const masterVibrantSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, defaultSubstrate);
-  const masterVibrantTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, null, silhouettePathD);
+  const masterVibrantSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, defaultSubstrate, null, masterOpts);
+  const masterVibrantTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, null, silhouettePathD, masterOpts);
 
   progressCallback({ step: 6, name: 'Complete', pct: 100 });
 
@@ -412,6 +467,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     posterizeColor: posterColorSolidSvg,
     pixelMatch: pixelMatchSolidSvg,
     monochrome: monoSolidSvg,
+    twoTone: twoToneSolidSvg,
     stencil: stencilSolidSvg,
     posterize4: poster4SolidSvg,
     posterize4Inverted: poster4InvSolidSvg,
@@ -427,6 +483,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     posterizeColor: posterColorTransparentSvg,
     pixelMatch: pixelMatchTransparentSvg,
     monochrome: monoTransparentSvg,
+    twoTone: twoToneTransparentSvg,
     stencil: stencilTransparentSvg,
     posterize4: poster4TransparentSvg,
     posterize4Inverted: poster4InvTransparentSvg,

@@ -45,27 +45,28 @@ Most online vectorizers suffer from one of three fatal flaws:
 - Images never travel across the network to any server, bucket, or third-party API.
 - All in-memory buffers and ImageData representations are immediately reclaimed when the browser tab is closed.
 
-### 2. 🔲 Dedicated Logo & Typography Engine
-- **90-Degree Corner Preservation:** Tightened straight-line tolerance (`optTolerance: 0.08`) and aggressive corner retention (`alphaMax: 0.15`) ensure crisp right angles on lettering, sharp brackets, and tiny punctuation marks like the dot on an 'i'.
-- **Bypass Bilateral Blurring:** Skips Gaussian pre-smoothing to prevent softening of crisp corporate vectors.
-- **Adaptive Natural Spot Color Discovery:** Clusters anti-aliased transition pixels into dominant spot colors with a safety ceiling of up to 32 colors without artificial color clipping.
-- **1-Click Transparent Background Knockout:** Instantly isolates logos against pure white or checkerboard transparent backdrops.
+### 2. 🔲 Dedicated Logo, Typography & Line-Art Engine
+- **90-Degree Corner Preservation:** Tightened straight-line tolerance (`optTolerance: 0.08`) and aggressive corner retention (`alphaMax: 0.15`) ensure crisp right angles on corporate branding, sharp brackets, and geometric marks.
+- **Dual-Pass Glyph & Stroke Optimization:** For hand-drawn line art and intricate illustrations, a two-pass Connected Component Labeling (Union-Find) mask calibrates stroke thickness within ±0.5% of master line weight while preserving compact micro-glyphs, handwriting, and fine dots with smooth $G^1$ cubic Bézier curves (`alphaMax: 0.72`, `optTolerance: 0.10`).
+- **Exact Alpha Mask & Alpha-Bounded Color Trapping:** Directly preserves 100% of external and internal transparent cutouts (typography counter loops, filigree, negative space) while sealing adjacent color seams with 1px alpha-bounded trapping.
+- **Adaptive Natural Spot Color Discovery:** Clusters anti-aliased transition pixels into dominant spot colors (up to 32 inks) without artificial color clipping, plus **1-Click Transparent Background Knockout**.
 
 ### 3. 🎨 Multi-Tonal Silk Screen, Vinyl & CNC Stencils
 Decomposes input graphics into production-ready manufacturing layers:
 - **1-bit Otsu Monochrome Silhouette:** Variance minimization for pure high-contrast vinyl cutting.
+- **2-Tone Duotone Print Plate:** Clean Key Dark & Midtone ink separation for screenprinting and editorial graphics.
 - **4-Tone & 8-Tone Tonal Plates:** Progressive density plates calibrated via Tone Match Index (TMI).
 - **Inverted Plates:** Negative print suites optimized for dark apparel printing and laser engraving.
 - **Bridge-Connected Cut Stencils:** Structural bridges preventing "island fallout" during physical cutting.
 
-### 4. 📄 Master Scalable Vector PDF Suite
+### 4. 📄 Master Scalable Vector PDF Suite & Dynamic Naming
 - In-browser compilation using `jsPDF` and `svg2pdf.js`.
-- Exports all active artboards into a single multi-page PDF document (`master_vector_suite.pdf`).
+- Exports an Executive Cover Page plus all 12 vector plates into a single **13-page master PDF document** (`<source>_<mode>_master_suite_c2vector_DV.pdf`), with consistent dynamic filenames for individual SVGs and scaled PNGs (`@1x`, `@2x`, `@4x`).
 - **100% Pure Vector Bézier Streams:** Infinite print scalability with strictly **0 raster compression artifacts**.
 
-### 5. 🔍 Interactive 360° GPU Pan & Zoom Workbench
-- **Stateful 360° Pan-Zoom:** Smooth hardware-accelerated pan, touch-drag, and wheel zoom from 1x up to 8x magnification with negative space overflow protection.
-- **12 Specialized Artboards:** Rapid switching between Faithful Master, Vibrant Print, Chromatic Glaze, Tonal Plates, and 100% Pixel Matrices with **strictly 0.00px Layout Shift (CLS)**.
+### 5. 🔍 Interactive 360° Native ViewBox Pan & Zoom Workbench
+- **Crisp Native ViewBox Zoom (1x–8x):** Hardware-smooth pan, touch-drag, wheel zoom, soft boundary clamping, and dedicated **Center** control that preserves active magnification without GPU raster blur.
+- **13 Specialized Artboards:** Rapid switching between Vibrant v2, Faithful Master, 8-Tone Color, Pixel Match, 1-Bit Mono, 2-Tone Duotone, 4-Tone/8-Tone Positive & Negative Plates, Bridge Stencil, Canny Hairline Edges, and Chromatic Contours with **strictly 0.00px Layout Shift (CLS)**.
 - **Dynamic Swatch Palette:** Real-time hex color swatches with one-click clipboard copying and toast feedback.
 
 ### 6. 📱 Progressive Web App (PWA) & Offline Capability
@@ -113,33 +114,37 @@ c2vector/
 ├── public/                      # Static unbundled assets copied directly to dist/
 │   ├── favicon.ico              # Standard root favicon
 │   ├── manifest.webmanifest     # Progressive Web App manifest
-│   ├── sw.js                    # Offline Service Worker cache (c2vector-v7)
+│   ├── sw.js                    # Offline Service Worker cache (c2vector-v12)
 │   ├── robots.txt               # Search crawler directives
 │   ├── sitemap.xml              # Canonical clean XML sitemap
 │   ├── .nojekyll                # GitHub Pages static asset bypass
 │   ├── assets/
 │   │   ├── icons/               # Favicon suite (48, 96, 192, 512, apple-touch)
-│   │   ├── og/                  # Multi-aspect OpenGraph cards (<100KB, Golden & B&W)
+│   │   ├── og/                  # Multi-aspect OpenGraph cards (<100KB)
 │   │   ├── sample_logo.png      # Built-in demo logo graphic
 │   │   └── sample_photo.png     # Built-in demo photography artwork
 │   └── vendor/
 │       ├── jspdf.umd.min.js     # Client-side PDF generator
 │       └── svg2pdf.umd.min.js   # SVG-to-PDF geometry converter
+├── scripts/
+│   └── suite.mjs                # Unified automated verification, privacy audit & OG card CLI
 ├── src/
 │   ├── css/
 │   │   └── style.css            # Universal design system (Amber/Obsidian theme)
 │   ├── js/
-│   │   ├── app.js               # Application coordinator, UI events, pan-zoom engine
-│   │   └── engine/
-│   │       ├── bezier-tracer.js # Continuous cubic Bézier curve tracing
-│   │       ├── edge-depth.js    # Canny edge detection & focus depth mapping
-│   │       ├── image-ops.js     # Bicubic Hermite resampling & bilateral smoothing
-│   │       ├── logo-engine.js   # Dedicated 90° corner & spot color optimizer
-│   │       ├── pipeline.js      # Systematic 6-step vector orchestration
-│   │       ├── potrace.js       # Client-side Potrace curve fitting port
-│   │       ├── quantizer.js     # CIELAB Delta E color quantization
-│   │       ├── tonal-studies.js # Otsu monochrome, 4-tone/8-tone, bridge stencils
-│   │       └── worker.js        # Background Web Worker sandbox
+│   │   ├── app.js               # Application coordinator, UI events, native ViewBox pan-zoom
+│   │   ├── engine/
+│   │   │   ├── bezier-tracer.js # Continuous cubic Bézier SVG builders
+│   │   │   ├── image-ops.js     # Bicubic resampling, bilateral denoise & Canny edge detection
+│   │   │   ├── logo-engine.js   # Dedicated Logo, Typography & Line-Art vector engine
+│   │   │   ├── pipeline.js      # Systematic 6-step photographic vector orchestration
+│   │   │   ├── potrace.js       # Client-side Potrace curve & subpath fitting port
+│   │   │   ├── quantizer.js     # CIELAB Delta E color science & median-cut quantization
+│   │   │   ├── tonal-studies.js # Otsu 1-bit, exact alpha mask, stencil & dual-pass line art
+│   │   │   └── worker.js        # Background Web Worker sandbox
+│   │   └── export/
+│   │       ├── pdf-builder.js   # 13-page pure vector PDF suite compiler
+│   │       └── png-exporter.js  # OffscreenCanvas 1x/2x/4x PNG raster exporter
 │   └── vendor/                  # Bundled engine vendor modules
 ├── index.html                   # Primary Studio Workbench application
 ├── about/
@@ -149,6 +154,7 @@ c2vector/
 ├── vite.config.js               # Vite multi-page build configuration
 ├── package.json                 # Project manifest & npm scripts
 ├── README.md                    # Repository documentation
+├── CONTRIBUTING.md              # Contribution guidelines & code quality standards
 ├── LICENSE                      # Official MIT License
 └── SECURITY.md                  # Security and vulnerability policy
 ```
@@ -177,7 +183,7 @@ npm run build
 npm run preview
 ```
 
-### 3. Run Automated Quality & Verification Suites
+### 4. Run Automated Quality & Verification Suites
 ```bash
 # Run the complete automated test & verification suite:
 npm test
@@ -213,10 +219,11 @@ To deploy the production-ready Progressive Web App to GitHub Pages (`https://dee
 
 ## 📊 Quality & Production Standards (ISO/IEC 25010)
 
-- **Functional Correctness:** 98 / 98 automated Playwright and AST tests passing.
-- **Accessibility (WCAG 2.2 Level AA):** High-contrast ratios ($\ge 4.5:1$), complete keyboard navigation, explicit button types, `aria-hidden` decorative SVGs.
-- **Performance:** Sub-second First Contentful Paint (FCP), hoisted early font preconnects, Web Worker offloaded CPU tasks.
-- **Security:** Zero DOM XSS vectors, explicit HTTPS protocols, `rel="noopener noreferrer"` on all external links, character entity encoded contact emails.
+- **Functional Correctness:** 41 / 41 high-signal composite automated Playwright, geometry, transparency, and privacy tests passing (`npm test`).
+- **7-Vector Privacy & Leak Hygiene:** Verified 0 exposed local developer paths, 0 internal agent metadata paths, 0 private IPs, 0 hardcoded secrets, and 0 unstripped sourcemaps across both `src/` and compiled `dist/`.
+- **Accessibility (WCAG 2.2 Level AA):** High-contrast ratios ($\ge 4.5:1$), complete keyboard navigation, explicit `type="button"` on all interactive buttons, `aria-hidden` decorative SVGs, and `prefers-reduced-motion` support.
+- **Performance:** Sub-second First Contentful Paint (FCP), hoisted early font preconnects, Web Worker offloaded CPU tasks, and 60fps native ViewBox pan/zoom.
+- **Security:** Zero runtime npm dependencies, zero DOM XSS vectors (`eval()` / `new Function()`), explicit HTTPS protocols, `rel="noopener noreferrer"` on all external links, and character entity encoded contact emails.
 - **Clean URLs:** Universal directory routing (`/`, `/about/`, `/workflow/`) without `.html` extensions.
 
 ---

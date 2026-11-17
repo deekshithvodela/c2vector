@@ -48,16 +48,21 @@ All pull requests must adhere to our zero-diagnostic quality policy:
   - Zero layout shift ($\Delta Y = 0.00\text{px}$) across viewports.
 - **JavaScript Standards:**
   - Use ES2019+ optional catch binding (`try { ... } catch { ... }`) when the error object is unused.
-  - Never introduce unescaped `innerHTML` sinks or `eval()` calls.
+  - Never introduce unescaped `innerHTML` sinks or `eval()` / `new Function()` calls.
   - Keep CPU-heavy image processing inside Web Workers (`worker.js`).
+- **Privacy & Path Leak Hygiene:**
+  - Never commit absolute developer filesystem paths (`/home/...`, `/Users/...`, `C:\Users\...`), internal tool/agent paths (`.gemini/`), sibling workspace paths (`../<other-repo>`), private IPv4 addresses, or credentials into `src/`, `scripts/`, or compiled `dist/`.
 
 ---
 
 ## 🧪 Testing & Verification
 
-Before submitting a PR, verify that all automated verification suites pass:
+Before submitting a PR, verify that both the production build and the consolidated automated verification suite (41 composite checks covering 7-vector privacy/security, responsive layouts, Photo & Logo engines, 13 artboards, SVG 1.1 conformance, transparency coverage, and line-art glyph parity) pass with zero failures:
 
 ```bash
+# Verify clean production build:
+npm run build
+
 # Run the complete automated test & verification suite:
 npm test
 # (or: node scripts/suite.mjs)

@@ -223,9 +223,9 @@ var require_utils = __commonJS({
   }
 });
 
-// ../../.gemini/antigravity-ide/brain/707012b4-7cd2-44d9-a41a-2adb7ae1ed50/scratch/jimp_stub.js
+// potrace/jimp_stub.js (browser-only virtual stub)
 var require_jimp_stub = __commonJS({
-  "../../.gemini/antigravity-ide/brain/707012b4-7cd2-44d9-a41a-2adb7ae1ed50/scratch/jimp_stub.js"(exports, module) {
+  "potrace/jimp_stub"(exports, module) {
     module.exports = {};
   }
 });
@@ -1629,11 +1629,11 @@ var require_Potrace = __commonJS({
   }
 });
 
-// ../../.gemini/antigravity-ide/brain/707012b4-7cd2-44d9-a41a-2adb7ae1ed50/scratch/potrace_entry.js
+// Potrace ESM Entrypoint & Curve Exporter
 var Bitmap = require_Bitmap();
 var Potrace = require_Potrace();
 var utils = require_utils();
-function traceMaskToPathD(mask, width, height, options = {}) {
+function runPotraceOnMask(mask, width, height, options = {}) {
   const potrace = new Potrace({
     optCurve: options.optCurve !== void 0 ? options.optCurve : true,
     alphaMax: options.alphaMax !== void 0 ? options.alphaMax : 1.0,
@@ -1652,11 +1652,33 @@ function traceMaskToPathD(mask, width, height, options = {}) {
   potrace._bmToPathlist();
   potrace._processPath();
   potrace._processed = true;
-  const scale = { x: 1, y: 1 };
-  const d = potrace._pathlist.map((p) => utils.renderCurve(p.curve, scale)).join(" ");
-  return d;
+  const scale = options.scale || { x: 1, y: 1 };
+  return { potrace, scale };
+}
+function traceMaskToPathD(mask, width, height, options = {}) {
+  const { potrace, scale } = runPotraceOnMask(mask, width, height, options);
+  return potrace._pathlist.map((p) => utils.renderCurve(p.curve, scale)).join(" ");
+}
+function traceMaskToSubpaths(mask, width, height, options = {}) {
+  const { potrace, scale } = runPotraceOnMask(mask, width, height, options);
+  return potrace._pathlist.map((p) => {
+    return {
+      d: utils.renderCurve(p.curve, scale),
+      sign: p.sign,
+      minX: p.minX * scale.x,
+      maxX: p.maxX * scale.x,
+      minY: p.minY * scale.y,
+      maxY: p.maxY * scale.y,
+      w: (p.maxX - p.minX) * scale.x,
+      h: (p.maxY - p.minY) * scale.y,
+      cx: ((p.minX + p.maxX) / 2) * scale.x,
+      cy: ((p.minY + p.maxY) / 2) * scale.y,
+      area: Math.abs(p.area) * scale.x * scale.y
+    };
+  });
 }
 export {
   Potrace,
-  traceMaskToPathD
+  traceMaskToPathD,
+  traceMaskToSubpaths
 };

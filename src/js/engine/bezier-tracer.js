@@ -7,30 +7,10 @@
 import { traceMaskToPathD } from './potrace.js';
 
 /**
- * Traces a binary mask into a smooth cubic Bézier path string
- * @param {Uint8Array} mask - 1 for path, 0 for background
- * @param {number} width - canvas width
- * @param {number} height - canvas height
- * @param {object} options - turdSize, optTolerance, etc.
- * @returns {Array<string>} - Array with single combined multi-loop path string (or empty array)
- */
-export function traceBinaryMask(mask, width, height, options = {}) {
-  const turdSize = options.turdSize !== undefined ? options.turdSize : 14;
-  const optTolerance = options.optTolerance !== undefined ? options.optTolerance : 0.22;
-  const pathD = traceMaskToPathD(mask, width, height, {
-    optCurve: true,
-    turdSize,
-    optTolerance,
-    turnPolicy: 'minority'
-  });
-  return pathD ? [pathD] : [];
-}
-
-/**
  * Builds Full Master Vector SVG string with continuous Bézier tiers and translucent chromatic contours
  * Universal Continuous Discrete Vector Tier Production Print Specifications
  */
-export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges = null, bgHex = null, silhouettePathD = null) {
+export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges = null, bgHex = null, silhouettePathD = null, options = {}) {
   let body = '';
 
   // 1. Solid background base underlay path preventing sub-pixel seam light leaks
@@ -51,10 +31,15 @@ export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges
     const mask = tierMasks[t];
     if (!mask) continue;
 
+    const tierTurd = typeof options.tierTurdSize === 'function'
+      ? options.tierTurdSize(t)
+      : (options.turdSize !== undefined ? options.turdSize : 3);
+
     const pathD = traceMaskToPathD(mask, width, height, {
       optCurve: true,
-      turdSize: 3,
-      optTolerance: 0.22,
+      turdSize: tierTurd,
+      optTolerance: options.optTolerance !== undefined ? options.optTolerance : 0.22,
+      alphaMax: options.alphaMax !== undefined ? options.alphaMax : 0.15,
       turnPolicy: 'minority'
     });
 
@@ -124,7 +109,8 @@ export function buildMultiToneStudySvg(width, height, layers, bgHex = null, silh
     const pathD = traceMaskToPathD(layer.mask, width, height, {
       optCurve: true,
       turdSize: layer.turdSize !== undefined ? layer.turdSize : 3,
-      optTolerance: 0.20,
+      optTolerance: layer.optTolerance !== undefined ? layer.optTolerance : 0.20,
+      alphaMax: layer.alphaMax !== undefined ? layer.alphaMax : 0.15,
       turnPolicy: 'minority'
     });
     if (pathD && pathD.trim().length > 0) {
@@ -156,7 +142,8 @@ export function buildColorPosterizeSvg(width, height, layers, bgHex = null, silh
     const pathD = traceMaskToPathD(layer.mask, width, height, {
       optCurve: true,
       turdSize: layer.turdSize !== undefined ? layer.turdSize : 4,
-      optTolerance: 0.25,
+      optTolerance: layer.optTolerance !== undefined ? layer.optTolerance : 0.25,
+      alphaMax: layer.alphaMax !== undefined ? layer.alphaMax : 0.15,
       turnPolicy: 'minority'
     });
     if (pathD && pathD.trim().length > 0) {

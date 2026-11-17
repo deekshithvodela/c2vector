@@ -25,6 +25,7 @@ export async function compileMasterVectorPdf(results, filename = 'c2vector_maste
     { title: 'Color Posterize Print Plate (8-Tone)', subtitle: 'Bold Graphic Chromatic Planes for Silkscreen Art', key: 'posterizeColor' },
     { title: 'Seamless Pixel-Match Vector (Anti-Grid HD)', subtitle: 'Photorealistic Seamless Color Planes (Zero Grid Lines)', key: 'pixelMatch' },
     { title: '1-Bit Otsu Monochrome Stencil', subtitle: 'Pure Solid Black & White Vector Mask', key: 'monochrome' },
+    { title: '2-Tone Duotone Print Plate', subtitle: 'Key Ink & Midtone Modeling Ink Separation', key: 'twoTone' },
     { title: '4-Tone Monochrome Print Plate (Positive)', subtitle: 'Quantized Grayscale for Screenprint & Litho', key: 'posterize4' },
     { title: '4-Tone Inverted Print Plate (Negative)', subtitle: 'Negative Plate for Dark Apparel & Laser Engraving', key: 'posterize4Inverted' },
     { title: '8-Tone Graduated Grayscale Plate (Positive)', subtitle: 'Fine Modeling & Volumetric Depth', key: 'posterize8' },

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vectorization Architecture &amp; Pipeline — c2vector</title>
-  <meta name="description" content="Explore c2vector's 6-step client-side vector synthesis pipeline: bicubic HD resampling, Canny sub-pixel edges, CIELAB quantization, continuous Bézier tracing, and 12-page vector PDF compilation.">
+  <meta name="description" content="Explore c2vector's 6-step client-side vector synthesis pipeline: bicubic HD resampling, Canny sub-pixel edges, CIELAB quantization, continuous Bézier tracing, and 13-page vector PDF compilation.">
   <meta name="author" content="Deekshith Vodela">
   <link rel="canonical" href="https://deekshithvodela.github.io/c2vector/workflow/">
   <meta name="theme-color" content="#0b0d10" media="(prefers-color-scheme: dark)">
@@ -25,7 +25,7 @@
         } else {
           document.documentElement.classList.remove('dark');
         }
-      } catch (e) {}
+      } catch {}
     })();
   </script>
 
@@ -87,7 +87,7 @@
   <!-- Typography Preconnect -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
   <link rel="stylesheet" href="/src/css/style.css">
@@ -118,7 +118,7 @@
 
         <div class="header-utilities">
           <!-- Dark/Light Mode Theme Toggle Button -->
-          <button id="btnThemeToggle" class="theme-toggle-btn" aria-label="Switch to Light Mode" title="Toggle Dark/Light Mode">
+          <button type="button" id="btnThemeToggle" class="theme-toggle-btn" aria-label="Switch to Light Mode" title="Toggle Dark/Light Mode">
             <svg id="themeIconSun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="5"></circle>
               <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -297,12 +297,12 @@
       <div class="workflow-step-header">
         <span class="workflow-step-num">6</span>
         <div>
-          <h2 id="step6-title" class="workflow-step-title">12-Page Master Vector PDF Suite &amp; Multi-Format Export</h2>
+          <h2 id="step6-title" class="workflow-step-title">13-Page Master Vector PDF Suite &amp; Multi-Format Export</h2>
           <div style="font-size:0.85rem; color:var(--accent-gold); font-weight:700;">Client-Side jsPDF &bull; svg2pdf &bull; Offscreen Canvas 4x Rasterization</div>
         </div>
       </div>
       <p class="workflow-step-desc">
-        The output is compiled into an industry-standard 12-page vector PDF suite and multi-scale SVG artboards directly in the client browser with zero server roundtrips.
+        The output is compiled into an industry-standard 13-page vector PDF suite and multi-scale SVG artboards directly in the client browser with zero server roundtrips.
       </p>
       <div class="workflow-grid-2">
         <div class="workflow-spec-box">
@@ -388,7 +388,7 @@
           </svg>
           <span>MIT License</span>
         </h3>
-        <button class="modal-close-btn" data-modal-close aria-label="Close MIT License modal">✕</button>
+        <button type="button" class="modal-close-btn" data-modal-close aria-label="Close MIT License modal">✕</button>
       </div>
       <div class="modal-body">
         <p>Copyright (c) 2026 Deekshith Vodela</p>
@@ -411,7 +411,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.</pre>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-close>Close</button>
       </div>
     </div>
   </div>
@@ -427,7 +427,7 @@ SOFTWARE.</pre>
           </svg>
           <span>Privacy Policy &amp; Security Guarantee</span>
         </h3>
-        <button class="modal-close-btn" data-modal-close aria-label="Close Privacy Policy modal">✕</button>
+        <button type="button" class="modal-close-btn" data-modal-close aria-label="Close Privacy Policy modal">✕</button>
       </div>
       <div class="modal-body">
         <h4>100% In-Browser Execution</h4>
@@ -443,7 +443,7 @@ SOFTWARE.</pre>
         <p>Only your aesthetic UI theme preference (dark/light mode) is stored locally on your device via <code>localStorage</code> to prevent screen flickering upon future visits.</p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-close>Close</button>
       </div>
     </div>
   </div>
@@ -460,7 +460,7 @@ SOFTWARE.</pre>
           </svg>
           <span>Disclosure &amp; Technical Specifications</span>
         </h3>
-        <button class="modal-close-btn" data-modal-close aria-label="Close Disclosure modal">✕</button>
+        <button type="button" class="modal-close-btn" data-modal-close aria-label="Close Disclosure modal">✕</button>
       </div>
       <div class="modal-body">
         <h4>Deterministic Mathematical Vectorization (0% AI)</h4>
@@ -479,7 +479,7 @@ SOFTWARE.</pre>
         <p>c2vector is built and maintained as an independent open-source project by Deekshith Vodela. Contributions and issue reports are welcomed on GitHub.</p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-modal-close>Close</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-close>Close</button>
       </div>
     </div>
   </div>

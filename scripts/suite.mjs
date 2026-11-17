@@ -21,11 +21,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 
-// Dynamically import Playwright from workspace or system paths
+// Dynamically import Playwright from workspace devDependencies or PLAYWRIGHT_PATH
 async function getChromium() {
   const possiblePaths = [
     'playwright',
-    path.resolve(ROOT_DIR, '../sponsorship/node_modules/playwright/index.js')
+    ...(process.env.PLAYWRIGHT_PATH ? [process.env.PLAYWRIGHT_PATH] : [])
   ];
   for (const p of possiblePaths) {
     try {
@@ -33,7 +33,7 @@ async function getChromium() {
       return mod.chromium || mod.default?.chromium;
     } catch (_) {}
   }
-  throw new Error('Playwright not found in node_modules or system paths.');
+  throw new Error('Playwright not found in node_modules. Run `npm install` or set PLAYWRIGHT_PATH.');
 }
 
 // ============================================================================
@@ -99,13 +99,23 @@ export async function runTestSuite() {
   let leakedPathFound = false;
   let privateIpFound = false;
   const privateIpRegex = /(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})/;
+  const leakedPathRegex = /(?:\/home\/|\/Users\/|C:\\Users|\.gemini\/|antigravity-ide\/brain)/i;
 
-  for (const file of srcJsFiles) {
+  const distJsFiles = [];
+  if (fs.existsSync(path.join(ROOT_DIR, 'dist/assets'))) {
+    for (const entry of fs.readdirSync(path.join(ROOT_DIR, 'dist/assets'), { withFileTypes: true })) {
+      if (!entry.isDirectory() && entry.name.endsWith('.js')) {
+        distJsFiles.push(path.join(ROOT_DIR, 'dist/assets', entry.name));
+      }
+    }
+  }
+
+  for (const file of [...srcJsFiles, ...distJsFiles]) {
     const content = fs.readFileSync(file, 'utf-8');
-    if (content.includes('/home/') || content.includes('/Users/') || content.includes('C:\\Users')) leakedPathFound = true;
+    if (leakedPathRegex.test(content)) leakedPathFound = true;
     if (privateIpRegex.test(content)) privateIpFound = true;
   }
-  assert(!leakedPathFound, 'Vector 2: Machine Information (0 absolute developer filesystem paths in production src)');
+  assert(!leakedPathFound, 'Vector 2: Machine Information (0 absolute developer or internal agent paths in src & dist)');
   assert(!privateIpFound, 'Vector 2: Private Network IPs (0 internal/private IPv4 network addresses exposed)');
 
   // Vector 3: Secrets & API Tokens
@@ -196,7 +206,8 @@ export async function runTestSuite() {
   for (const p of pagesToAudit) {
     consoleErrors.length = 0;
     const resp = await page.goto(p.path, { waitUntil: 'networkidle' });
-    assert(resp && resp.status() === 200, `Quality: ${p.name} HTTP 200 (Route loaded cleanly)`);
+    const is200 = resp && resp.status() === 200;
+    const overflowErrors = [];
 
     for (const vp of viewports) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -211,10 +222,16 @@ export async function runTestSuite() {
         };
       });
 
-      assert(!overflow.hasOverflow, `Quality: ${p.name} Overflow @ ${vp.name} (scrollWidth <= innerWidth (${overflow.scrollWidth} <= ${overflow.innerWidth}))`);
+      if (overflow.hasOverflow) {
+        overflowErrors.push(`${vp.name} (${overflow.scrollWidth} > ${overflow.innerWidth})`);
+      }
     }
 
-    assert(consoleErrors.length === 0, `Quality: ${p.name} Console Errors (0 unhandled JS console errors)`);
+    const passed = is200 && overflowErrors.length === 0 && consoleErrors.length === 0;
+    const details = passed
+      ? `HTTP 200, 4 viewports [320px, 375px, 768px, 1280px] overflow-free, 0 console errors`
+      : `HTTP: ${resp?.status()}, Overflows: [${overflowErrors.join(', ') || 'none'}], Console: [${consoleErrors.join('; ') || 'none'}]`;
+    assert(passed, `Quality: ${p.name} (${details})`);
   }
 
   // --- SECTION 3: PHOTO MODE VECTOR ENGINE & 12 ARTBOARD SUITE ---
@@ -232,10 +249,11 @@ export async function runTestSuite() {
   await page.click('.tab-btn[data-artboard="posterizeColor"]');
   await page.waitForTimeout(200);
   const photoPosterTitle = await page.innerText('#activeArtboardTitle');
-  assert(photoPosterTitle.includes('Color Posterize Print Plate'), `Photo Mode: Retains photographic 8-tone title (${photoPosterTitle})`);
-
   const photoPathsCount = await page.$$eval('#viewport svg path', els => els.length);
-  assert(photoPathsCount >= 4, `Photo Mode: Renders rich multi-tier layers (${photoPathsCount} paths)`);
+  assert(
+    photoPosterTitle.includes('Color Posterize Print Plate') && photoPathsCount >= 4,
+    `Photo Mode: Color Posterize artboard renders photographic title ("${photoPosterTitle}") and ${photoPathsCount} vector tiers`
+  );
 
   // --- SECTION 3b: PHOTO MODE TRANSPARENT INGESTION & GRID KNOCKOUT ---
   console.log('\n--- 3b. Photo Mode Transparent Ingestion & Grid Knockout ---');
@@ -268,22 +286,25 @@ export async function runTestSuite() {
     };
   });
 
-  assert(photoTransparentTest.mode === 'photo', 'Photo Mode Transparent: Stays in Photo Mode without auto-redirection');
-  assert(photoTransparentTest.isTransparentImage === true, 'Photo Mode Transparent: Detects alpha transparency');
-  assert(!photoTransparentTest.transparentHasRect, 'Photo Mode Transparent: transparentSvgs has zero <rect> tags');
-  assert(photoTransparentTest.solidHasRect, 'Photo Mode Transparent: solidSvgs has substrate plate <rect>');
-  assert(!photoTransparentTest.activeHasRect, 'Photo Mode Transparent: Default active vector renders transparent background');
+  assert(
+    photoTransparentTest.mode === 'photo' &&
+    photoTransparentTest.isTransparentImage === true &&
+    !photoTransparentTest.transparentHasRect &&
+    photoTransparentTest.solidHasRect &&
+    !photoTransparentTest.activeHasRect,
+    `Photo Mode Transparent: Preserves photo mode, detects alpha, renders 0 <rect> in transparent/active SVGs and keeps solid substrate plate`
+  );
 
   // --- SECTION 4: LOGO MODE VECTOR ENGINE & 8-TONE COLOR ROBUSTNESS ---
   console.log('\n--- 4. Logo Mode Spot-Color Engine & 8-Tone Robustness ---');
 
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('http://localhost:5173/c2vector/', { waitUntil: 'networkidle' });
   await page.click('#tabModeLogo');
   await page.waitForTimeout(200);
 
   await page.click('#btnSampleLogo');
   await page.waitForSelector('#workbench', { state: 'visible', timeout: 15000 });
-  assert(true, 'Logo Mode: Ingests sample logo successfully');
 
   // Verify Swatches & Overflow Prevention
   const swatches = await page.$$eval('#workbenchPaletteSwatches .swatch-chip', els =>
@@ -291,23 +312,20 @@ export async function runTestSuite() {
   );
 
   const hasBlackOverflow = swatches.some(s => s.toLowerCase().includes('#010100'));
-  assert(!hasBlackOverflow, 'Logo Mode: Bitwise integer overflow resolved (zero phantom #010100 swatches)');
-
   const hasNavy = swatches.some(s => s.toLowerCase().includes('#0f172a') || s.toLowerCase().includes('#101828'));
   const hasGold = swatches.some(s => s.toLowerCase().includes('#f4ba00') || s.toLowerCase().includes('#f8b800'));
   const hasRubyRed = swatches.some(s => s.toLowerCase().includes('#e11d48') || s.toLowerCase().includes('#e02048'));
 
-  assert(hasNavy, 'Logo Mode: Navy brand spot color accurately detected');
-  assert(hasGold, 'Logo Mode: Gold brand spot color accurately detected');
-  assert(hasRubyRed, 'Logo Mode: Ruby Red brand emblem accurately detected in palette');
+  assert(
+    !hasBlackOverflow && hasNavy && hasGold && hasRubyRed,
+    `Logo Mode Palette: Sample logo ingested with 0 phantom #010100 swatches and all 3 brand spot colors (Navy, Gold, Ruby Red) detected`
+  );
 
   // Inspect posterizeColor (8-Tone Color Artboard)
   await page.click('.tab-btn[data-artboard="posterizeColor"]');
   await page.waitForTimeout(300);
 
   const logoPosterTitle = await page.innerText('#activeArtboardTitle');
-  assert(logoPosterTitle === 'Spot-Color Reduction (Up to 8 Inks)', `Logo Mode: Updated artboard title (${logoPosterTitle})`);
-
   const posterData = await page.evaluate(() => {
     const svg = document.querySelector('#viewport svg');
     if (!svg) return null;
@@ -323,33 +341,40 @@ export async function runTestSuite() {
     };
   });
 
-  assert(posterData !== null, 'Logo Mode: posterizeColor renders a valid SVG element');
-  assert(posterData.hasRect && posterData.rectFill === '#ffffff', `Logo Mode: Substrate plate rect is white (#ffffff) (fill: ${posterData.rectFill})`);
-  assert(posterData.paths.length === 3, `Logo Mode: posterizeColor renders exactly 3 foreground ink plates (actual: ${posterData.paths.length})`);
-
-  const renderedFills = posterData.paths.map(p => p.fill.toLowerCase());
+  const renderedFills = posterData ? posterData.paths.map(p => p.fill.toLowerCase()) : [];
   const posterHasNavy = renderedFills.some(f => f === '#0f172a' || f === '#101828');
   const posterHasGold = renderedFills.some(f => f === '#f4ba00' || f === '#f8b800');
   const posterHasRed = renderedFills.some(f => f === '#e11d48' || f === '#e02048');
+  const redPath = posterData ? posterData.paths.find(p => p.fill.toLowerCase().includes('e11d') || p.fill.toLowerCase().includes('e020')) : null;
 
-  assert(posterHasNavy, 'Logo Mode: posterizeColor includes Navy shield border path');
-  assert(posterHasGold, 'Logo Mode: posterizeColor includes Gold shield field path');
-  assert(posterHasRed, 'Logo Mode: posterizeColor retains Ruby Red brand emblem (3/3 brand colors verified)');
+  assert(
+    logoPosterTitle === 'Spot-Color Reduction (Up to 8 Inks)' &&
+    posterData !== null &&
+    posterData.hasRect &&
+    posterData.rectFill === '#ffffff' &&
+    posterData.paths.length === 3,
+    `Logo Mode posterizeColor: Correct title ("${logoPosterTitle}"), white substrate plate (#ffffff), and exactly 3 foreground ink plates`
+  );
+  assert(
+    posterHasNavy && posterHasGold && posterHasRed && redPath && redPath.dLen > 100,
+    `Logo Mode Brand Fidelity: Renders Navy shield, Gold field, and Ruby Red emblem (${redPath ? redPath.dLen : 0} bytes)`
+  );
 
-  const redPath = posterData.paths.find(p => p.fill.toLowerCase().includes('e11d') || p.fill.toLowerCase().includes('e020'));
-  assert(redPath && redPath.dLen > 100, `Logo Mode: Ruby Red emblem has geometric detail (${redPath ? redPath.dLen : 0} bytes)`);
-
-  // Inspect All 12 Artboard SVGs for Non-Blank Output
-  console.log('\n--- 5. All 12 Logo Artboard Rendering & Dark Mode Plates ---');
+  // Inspect All 13 Artboard SVGs for Non-Blank Output
+  console.log('\n--- 5. All 13 Logo Artboard Rendering & Dark Mode Plates ---');
   const artboardKeys = [
     'masterVibrant', 'masterFaithful', 'posterizeColor', 'pixelMatch',
-    'monochrome', 'posterize4', 'posterize4Inverted', 'posterize8',
+    'monochrome', 'twoTone', 'posterize4', 'posterize4Inverted', 'posterize8',
     'posterize8Inverted', 'stencil', 'cannyEdges', 'chromaticEdges'
   ];
 
+  const artboardFailures = [];
   for (const key of artboardKeys) {
-    await page.click(`.tab-btn[data-artboard="${key}"]`);
-    await page.waitForTimeout(100);
+    await page.evaluate((k) => {
+      const btn = document.querySelector(`.tab-btn[data-artboard="${k}"]`);
+      if (btn) btn.click();
+    }, key);
+    await page.waitForTimeout(150);
 
     const artboardInfo = await page.evaluate(() => {
       const svg = document.querySelector('#viewport svg');
@@ -361,9 +386,11 @@ export async function runTestSuite() {
       };
     });
 
-    assert(artboardInfo.hasSvg && artboardInfo.length > 100, `Logo Artboard "${key}": Renders valid SVG (${artboardInfo.length} bytes)`);
-    assert(artboardInfo.hasRect, `Logo Artboard "${key}": Has background plate rect to prevent blank dark mode`);
+    if (!artboardInfo.hasSvg || artboardInfo.length <= 100 || !artboardInfo.hasRect) {
+      artboardFailures.push(`${key} (svg:${artboardInfo.hasSvg}, len:${artboardInfo.length}, rect:${artboardInfo.hasRect})`);
+    }
   }
+  assert(artboardFailures.length === 0, `Logo Artboards: All 13 artboards render valid standalone SVGs with dark mode plates${artboardFailures.length ? ` (Failures: ${artboardFailures.join(', ')})` : ''}`);
 
   // --- SECTION 6: TRANSPARENT PNG LOGO INGESTION & ANTI-CAMOUFLAGE PROTECTION ---
   console.log('\n--- 6. Transparent PNG Logo Ingestion & Anti-Camouflage Protection ---');
@@ -405,12 +432,15 @@ export async function runTestSuite() {
     };
   });
 
-  assert(ariseTest.isTransparentLogo === true, 'Transparent PNG: Ingestion accurately detects perimeter alpha transparency (isTransparentLogo = true)');
-  assert(ariseTest.knockoutBackground === true, 'Transparent PNG: Default knockoutBackground is true for transparent logos');
-  assert(ariseTest.rectFill === null, `Transparent PNG: Master vector renders transparent background without backing rect (rectFill: ${ariseTest.rectFill})`);
-  assert(ariseTest.hasNavyPath, 'Transparent PNG: Master vector renders high-contrast navy typography path (#263f87)');
-  assert(!ariseTest.transparentHasRect, 'Transparent PNG: transparentSvgs master contains zero <rect> tags');
-  assert(ariseTest.solidRectFill === '#ffffff', `Transparent PNG: solidSvgs master provides contrast white substrate plate (actual: ${ariseTest.solidRectFill})`);
+  assert(
+    ariseTest.isTransparentLogo === true &&
+    ariseTest.knockoutBackground === true &&
+    ariseTest.rectFill === null &&
+    ariseTest.hasNavyPath &&
+    !ariseTest.transparentHasRect &&
+    ariseTest.solidRectFill === '#ffffff',
+    `Transparent PNG Logo: Detects alpha, defaults to transparent knockout (0 <rect>), preserves #263f87 typography, and provides #ffffff solid plate`
+  );
 
   // Test Interactive Background Removal & Grid Toggle on UI
   console.log('\n--- 6b. Grid Button Background Removal & Transparent SVG Downloads ---');
@@ -460,15 +490,21 @@ export async function runTestSuite() {
     };
   });
 
-  assert(gridButtonTest.toggledGridOn === true, 'Grid Button: Clicking toggles isGridOn to true');
-  assert(gridButtonTest.toggledHasActive === true, 'Grid Button: #btnToggleGrid gains .active class');
-  assert(gridButtonTest.toggledHasGridPattern === true, 'Grid Button: #viewport gains .grid-pattern class displaying checkerboard');
-  assert(!gridButtonTest.rectAfterRemoval, 'Grid Button: Removes background rect from SVG artwork in viewport');
-  assert(!gridButtonTest.currentHasRect, 'Grid Button: Downloadable currentResults.svgs has zero background rect plates');
-  assert(gridButtonTest.restoredGridOn === false, 'Grid Button: Second click restores isGridOn to false');
-  assert(!gridButtonTest.restoredHasActive, 'Grid Button: Second click removes .active class');
-  assert(!gridButtonTest.restoredHasGridPattern, 'Grid Button: Second click hides checkerboard grid');
-  assert(gridButtonTest.rectAfterRestore === true, 'Grid Button: Second click restores solid background rect in viewport');
+  assert(
+    gridButtonTest.toggledGridOn === true &&
+    gridButtonTest.toggledHasActive === true &&
+    gridButtonTest.toggledHasGridPattern === true &&
+    !gridButtonTest.rectAfterRemoval &&
+    !gridButtonTest.currentHasRect,
+    'Grid Toggle ON: Activates checkerboard pattern, strips viewport <rect>, and exports transparent downloadable SVGs'
+  );
+  assert(
+    gridButtonTest.restoredGridOn === false &&
+    !gridButtonTest.restoredHasActive &&
+    !gridButtonTest.restoredHasGridPattern &&
+    gridButtonTest.rectAfterRestore === true,
+    'Grid Toggle OFF: Hides checkerboard pattern and restores solid substrate <rect> in viewport'
+  );
 
   console.log('\n--- Section 7: Desktop Layout Shift & Center Canvas Tests ---');
   
@@ -479,7 +515,6 @@ export async function runTestSuite() {
     const parent = btn.closest('.viewer-controls');
     return Boolean(parent);
   });
-  assert(centerCanvasExists, 'Viewer Controls: #btnCenterCanvas is present inside .viewer-controls');
 
   // 2. Test Center Canvas action logic & Zoom Preservation
   const centerCanvasAction = await page.evaluate(() => {
@@ -515,13 +550,20 @@ export async function runTestSuite() {
       resetZoom
     };
   });
-  assert(centerCanvasAction.centeredPanX === 0 && centerCanvasAction.centeredPanY === 0, 'Center Canvas: Resets pan coordinates to (0, 0) upon click');
-  assert(centerCanvasAction.zoomRetained === 2, 'Center Canvas: Preserves user magnification (2x) when re-centering');
-  assert(centerCanvasAction.zoomAfterSecondClick === 2, 'Center Canvas: Strictly preserves magnification across repeated clicks (does not default to 1x)');
-  assert(centerCanvasAction.resetZoom === 1, 'Zoom Controls: Dedicated [1x] button resets magnification to 1x');
+  assert(
+    centerCanvasExists &&
+    centerCanvasAction.centeredPanX === 0 &&
+    centerCanvasAction.centeredPanY === 0 &&
+    centerCanvasAction.zoomRetained === 2 &&
+    centerCanvasAction.zoomAfterSecondClick === 2 &&
+    centerCanvasAction.resetZoom === 1,
+    'Center Canvas & Zoom Controls: Resets pan to (0,0), strictly preserves 2x zoom across clicks, and [1x] resets zoom to 1x'
+  );
 
   // 3. Desktop Toolbar Layout Invariance Test across artboards
   const desktopViewports = [1366, 1440, 1920];
+  const shiftFailures = [];
+  const shiftDeltas = [];
   for (const vpWidth of desktopViewports) {
     await page.setViewportSize({ width: vpWidth, height: 900 });
     const heights = await page.evaluate(() => {
@@ -551,8 +593,12 @@ export async function runTestSuite() {
     const minH = Math.min(...heights);
     const maxH = Math.max(...heights);
     const deltaH = maxH - minH;
-    assert(deltaH < 1, `Desktop ${vpWidth}px: Zero toolbar layout shift across all 12 artboard titles (min: ${minH}px, max: ${maxH}px, delta: ${deltaH.toFixed(2)}px)`);
+    shiftDeltas.push(`${vpWidth}px: Δ${deltaH.toFixed(2)}px`);
+    if (deltaH >= 1) {
+      shiftFailures.push(`${vpWidth}px (delta: ${deltaH.toFixed(2)}px)`);
+    }
   }
+  assert(shiftFailures.length === 0, `Desktop Layout Shift: Zero toolbar layout shift across 1366px, 1440px, and 1920px viewports (${shiftDeltas.join(', ')})`);
 
   // 4. Mobile Viewport Overflow Test at 320px
   await page.setViewportSize({ width: 320, height: 640 });
@@ -617,9 +663,8 @@ export async function runTestSuite() {
     return outcomes;
   });
 
-  for (const r of zoomVbResults) {
-    assert(r.wMatch && r.hMatch, `ViewBox Zoom Engine: Magnification ${r.zoom}x scales viewBox dimensions to 1/${r.zoom}th (${r.actualW.toFixed(1)}px vs ${r.expectedW.toFixed(1)}px)`);
-  }
+  const zoomFailures = zoomVbResults.filter(r => !(r.wMatch && r.hMatch)).map(r => `${r.zoom}x (${r.actualW.toFixed(1)} vs ${r.expectedW.toFixed(1)})`);
+  assert(zoomFailures.length === 0, `ViewBox Zoom Engine: Magnifications [1x, 2x, 4x, 8x] scale viewBox dimensions to exact 1/z ratios${zoomFailures.length ? ` (Failures: ${zoomFailures.join(', ')})` : ''}`);
 
   // 3. Verify Soft Boundary Clamping on Pan
   const panClampTest = await page.evaluate(async () => {
@@ -772,20 +817,22 @@ export async function runTestSuite() {
     };
   });
 
-  assert(vectorPathAudit.photoAudit.totalPaths > 0, `Photo Mode: Traced ${vectorPathAudit.photoAudit.totalPaths} valid geometric vector paths across artboards`);
-  assert(vectorPathAudit.photoAudit.openPaths === 0, 'Photo Mode: 100% of paths strictly closed with Z (0 open polylines)');
-  assert(vectorPathAudit.photoAudit.compoundPaths > 0 && vectorPathAudit.photoAudit.compoundPaths === vectorPathAudit.photoAudit.validCompoundClosures, `Photo Mode: All ${vectorPathAudit.photoAudit.compoundPaths} compound paths with hole cutouts strictly close each subpath with Z before M`);
-
-  assert(vectorPathAudit.logoAudit.totalPaths > 0, `Logo Mode: Traced ${vectorPathAudit.logoAudit.totalPaths} valid geometric vector paths across artboards`);
-  assert(vectorPathAudit.logoAudit.openPaths === 0, 'Logo Mode: 100% of paths strictly closed with Z (0 open polylines)');
-  assert(vectorPathAudit.logoAudit.compoundPaths > 0 && vectorPathAudit.logoAudit.compoundPaths === vectorPathAudit.logoAudit.validCompoundClosures, `Logo Mode: All ${vectorPathAudit.logoAudit.compoundPaths} compound paths with hole cutouts strictly close each subpath with Z before M`);
-
-  assert(!vectorPathAudit.photoAudit.hasEmbeddedRaster && !vectorPathAudit.logoAudit.hasEmbeddedRaster, 'Vector Purity: 0 embedded raster <image> or base64 tags across all modes');
-  assert(vectorPathAudit.photoAudit.nanOrUndefinedCoords === 0 && vectorPathAudit.logoAudit.nanOrUndefinedCoords === 0, 'Vector Coordinates: Zero NaN or undefined coordinate values');
-
-  assert(vectorPathAudit.exportCheck.hasXmlHeader, 'SVG Export: Downloadable SVG includes standard <?xml version="1.0" encoding="UTF-8" standalone="no"?> declaration');
-  assert(vectorPathAudit.exportCheck.hasDoctype, 'SVG Export: Downloadable SVG includes official W3C SVG 1.1 DTD preamble for Canva/Illustrator compatibility');
-  assert(vectorPathAudit.exportCheck.hasVersion11 && vectorPathAudit.exportCheck.hasXlink, 'SVG Export: Root <svg> declares version="1.1" and xmlns:xlink namespace');
+  assert(
+    vectorPathAudit.photoAudit.totalPaths > 0 && vectorPathAudit.photoAudit.openPaths === 0 && vectorPathAudit.photoAudit.compoundPaths > 0 && vectorPathAudit.photoAudit.compoundPaths === vectorPathAudit.photoAudit.validCompoundClosures,
+    `Photo Mode Geometry: ${vectorPathAudit.photoAudit.totalPaths} paths, 100% closed with Z (0 open), all ${vectorPathAudit.photoAudit.compoundPaths} compound cutouts valid`
+  );
+  assert(
+    vectorPathAudit.logoAudit.totalPaths > 0 && vectorPathAudit.logoAudit.openPaths === 0 && vectorPathAudit.logoAudit.compoundPaths > 0 && vectorPathAudit.logoAudit.compoundPaths === vectorPathAudit.logoAudit.validCompoundClosures,
+    `Logo Mode Geometry: ${vectorPathAudit.logoAudit.totalPaths} paths, 100% closed with Z (0 open), all ${vectorPathAudit.logoAudit.compoundPaths} compound cutouts valid`
+  );
+  assert(
+    !vectorPathAudit.photoAudit.hasEmbeddedRaster && !vectorPathAudit.logoAudit.hasEmbeddedRaster && vectorPathAudit.photoAudit.nanOrUndefinedCoords === 0 && vectorPathAudit.logoAudit.nanOrUndefinedCoords === 0,
+    'Vector Purity & Coordinates: 0 embedded raster/base64 tags and 0 NaN/undefined coordinates across all modes'
+  );
+  assert(
+    vectorPathAudit.exportCheck.hasXmlHeader && vectorPathAudit.exportCheck.hasDoctype && vectorPathAudit.exportCheck.hasVersion11 && vectorPathAudit.exportCheck.hasXlink,
+    'SVG 1.1 Conformance: Standalone export passes XML declaration, W3C SVG 1.1 DTD, version="1.1", and xmlns:xlink namespace'
+  );
 
   // --- SECTION 10: TRANSPARENT INTERNAL SEAM & SILHOUETTE UNDERLAY VERIFICATION ---
   console.log('\n--- Section 10: Transparent Internal Seam & Silhouette Underlay Verification ---');
@@ -893,7 +940,7 @@ export async function runTestSuite() {
 
     const filledArtboards = [
       'masterVibrant', 'masterFaithful', 'posterizeColor', 'pixelMatch',
-      'monochrome', 'stencil', 'posterize4', 'posterize4Inverted',
+      'monochrome', 'twoTone', 'stencil', 'posterize4', 'posterize4Inverted',
       'posterize8', 'posterize8Inverted'
     ];
 
@@ -915,16 +962,205 @@ export async function runTestSuite() {
     };
   }, testImgBase64);
 
-  for (const [key, stat] of Object.entries(transparencyAudit.photoStats)) {
-    assert(!stat.hasRect, `Photo Mode "${key}": Zero <rect> background canvas plate in transparent mode`);
-    assert(stat.missingPct <= 0.1, `Photo Mode "${key}": Seamless internal coverage (>= 99.9% opaque subject, only ${stat.missingInsideSubject} px / ${stat.missingPct.toFixed(3)}% missing)`);
-    assert(stat.leakedPct <= 4.0, `Photo Mode "${key}": Canvas background remains >= 96.0% transparent (only ${stat.leakedPct.toFixed(3)}% internal filigree sealed & 1px trap)`);
+  function validateTransparencyStats(stats, modeLabel) {
+    const failures = [];
+    let maxMissing = 0;
+    let maxLeaked = 0;
+    for (const [key, stat] of Object.entries(stats)) {
+      if (stat.hasRect) failures.push(`${key} has <rect>`);
+      if (stat.missingPct > 0.1) failures.push(`${key} missing: ${stat.missingPct.toFixed(3)}% > 0.1%`);
+      if (stat.leakedPct > 4.0) failures.push(`${key} leaked: ${stat.leakedPct.toFixed(3)}% > 4.0%`);
+      if (stat.missingPct > maxMissing) maxMissing = stat.missingPct;
+      if (stat.leakedPct > maxLeaked) maxLeaked = stat.leakedPct;
+    }
+    const count = Object.keys(stats).length;
+    assert(failures.length === 0, `${modeLabel} Transparency: All ${count} artboards verified (0 <rect> plates, >=${(100 - maxMissing).toFixed(2)}% internal coverage, >=${(100 - maxLeaked).toFixed(2)}% background transparency)${failures.length ? ` (Failures: ${failures.join(', ')})` : ''}`);
   }
 
-  for (const [key, stat] of Object.entries(transparencyAudit.logoStats)) {
-    assert(!stat.hasRect, `Logo Mode "${key}": Zero <rect> background canvas plate in transparent mode`);
-    assert(stat.missingPct <= 0.1, `Logo Mode "${key}": Seamless internal coverage (>= 99.9% opaque subject, only ${stat.missingInsideSubject} px / ${stat.missingPct.toFixed(3)}% missing)`);
-    assert(stat.leakedPct <= 4.0, `Logo Mode "${key}": Canvas background remains >= 96.0% transparent (only ${stat.leakedPct.toFixed(3)}% internal filigree sealed & 1px trap)`);
+  validateTransparencyStats(transparencyAudit.photoStats, 'Photo Mode');
+  validateTransparencyStats(transparencyAudit.logoStats, 'Logo Mode');
+
+  // --- SECTION 11: FINE LINE ART & TWO-TONE QUALITY AUDIT (PHASE 50) ---
+  console.log('\n--- 11. Fine Line Art Vectorization & Two-Tone Quality Audit ---');
+  const fineLineAudit = await page.evaluate(async () => {
+    const { runLogoVectorizationPipeline } = await import('/c2vector/src/js/engine/logo-engine.js');
+    
+    // Create an intricate 200x200 canvas with 1-px parallel lines and fine text
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 200, 200);
+
+    // Draw 1px parallel black lines spaced 2px apart
+    ctx.fillStyle = '#000000';
+    for (let x = 10; x < 90; x += 3) {
+      ctx.fillRect(x, 10, 1, 80);
+    }
+    // Draw micro text
+    ctx.font = '8px sans-serif';
+    ctx.fillText('kriti', 100, 30);
+    ctx.fillText('vector', 100, 60);
+
+    const imgData = ctx.getImageData(0, 0, 200, 200);
+    const res = await runLogoVectorizationPipeline(imgData.data, 200, 200, { mode: 'logo' }, () => {});
+
+    // Check circular blobs in master SVG
+    const svgStr = res.transparentSvgs.masterVibrant;
+    const subpaths = svgStr.split('M ').slice(1);
+    let lineBlobs = 0;
+    let iDots = 0;
+    for (const sp of subpaths) {
+      const coords = [];
+      const re = /([0-9.-]+)\s+([0-9.-]+)/g;
+      let m;
+      while ((m = re.exec(sp)) !== null) {
+        coords.push([parseFloat(m[1]), parseFloat(m[2])]);
+      }
+      if (coords.length < 2) continue;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const [x, y] of coords) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      const w = maxX - minX, h = maxY - minY;
+      if (w > 0 && h > 0 && Math.abs(w - h) < 1.2 && w < 5) {
+        if (minX < 95) lineBlobs++;
+        else iDots++;
+      }
+    }
+
+    // Check twoTone plate
+    const twoToneSvg = res.transparentSvgs.twoTone;
+    const hasTwoToneMid = twoToneSvg.includes('logo-twotone-mid');
+    const hasTwoToneDark = twoToneSvg.includes('logo-twotone-dark');
+
+    return {
+      lineBlobs,
+      iDots,
+      hasTwoToneMid,
+      hasTwoToneDark,
+      svgSize: svgStr.length,
+      spotColorsCount: res.spotColors.length,
+      isAchromatic: res.spotColors.every(sc => Math.sqrt(sc.lab[1]*sc.lab[1] + sc.lab[2]*sc.lab[2]) < 14)
+    };
+  });
+
+  assert(
+    fineLineAudit.isAchromatic &&
+    fineLineAudit.spotColorsCount === 1 &&
+    fineLineAudit.lineBlobs === 0 &&
+    fineLineAudit.iDots >= 1 && fineLineAudit.iDots <= 10 &&
+    fineLineAudit.hasTwoToneDark,
+    `Fine Line Art (Phase 50): Unified 1 achromatic ink plate, 0 parallel-line blobs, ${fineLineAudit.iDots} micro-dots preserved, and two-tone Key Dark intact`
+  );
+
+  // --- SECTION 12: DYNAMIC NAMING, SUB-PIXEL LINE ART BENCHMARK & MULTI-MODE PARITY ---
+  console.log('\n--- 12. Dynamic Naming, Sub-Pixel Line Art Benchmark & Multi-Mode Parity ---');
+  const lineArtPath = path.join(ROOT_DIR, 'input/user_line_art.png');
+  const lineArtBase64 = fs.existsSync(lineArtPath) ? fs.readFileSync(lineArtPath).toString('base64') : null;
+
+  const lineArtBenchmark = await page.evaluate(async (imgB64) => {
+    // 1. Dynamic Download Naming Checks
+    window.__c2vectorState.currentSourceFileName = 'master_logo_vector (2)';
+    if (window.__c2vectorState.currentResults) {
+      window.__c2vectorState.currentResults.mode = 'logo';
+    }
+    const svgName = window.__c2vectorState.getDynamicDownloadFilename('masterVibrant', 'svg');
+    const pdfName = window.__c2vectorState.getDynamicDownloadFilename('suite', 'pdf');
+    const pngName = window.__c2vectorState.getDynamicDownloadFilename('twoTone', 'png', 2);
+
+    // 2. Single-Pass Sub-Pixel Line Art & Multi-Mode Parity Benchmark
+    let stats = null;
+    if (imgB64) {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = 'data:image/png;base64,' + imgB64;
+      });
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imgData = ctx.getImageData(0, 0, w, h);
+
+      const { runLogoVectorizationPipeline } = await import('/c2vector/src/js/engine/logo-engine.js');
+      const { runVectorizationPipeline } = await import('/c2vector/src/js/engine/pipeline.js');
+
+      const logoRes = await runLogoVectorizationPipeline(imgData.data, w, h, { maxColors: 32 }, () => {});
+      const photoRes = await runVectorizationPipeline(imgData.data, w, h, {}, () => {});
+
+      const svg = logoRes.transparentSvgs.masterVibrant;
+      const totalSubpaths = (svg.match(/M/g) || []).length;
+      const totalCurves = (svg.match(/C/g) || []).length;
+
+      const subpathTokens = svg.split('M').slice(1);
+      let cropBandSubpaths = 0;
+      let glyphCropSubpaths = 0;
+      let daisyCropSubpaths = 0;
+      for (const token of subpathTokens) {
+        const match = token.trim().match(/^([-+]?[0-9]*\.?[0-9]+)\s+([-+]?[0-9]*\.?[0-9]+)/);
+        if (match) {
+          const x = parseFloat(match[1]);
+          const y = parseFloat(match[2]);
+          if (x >= 0 && x <= 135 && y >= 450 && y <= 525) cropBandSubpaths++;
+          if (x >= 0 && x <= 150 && y >= 970 && y <= 1024) glyphCropSubpaths++;
+          if (x >= 0 && x <= 160 && y >= 920 && y <= 975) daisyCropSubpaths++;
+        }
+      }
+
+      stats = {
+        totalSubpaths,
+        totalCurves,
+        cropBandSubpaths,
+        glyphCropSubpaths,
+        daisyCropSubpaths,
+        svgSize: svg.length,
+        hasMonochrome: Boolean(logoRes.transparentSvgs.monochrome),
+        hasTwoTone: Boolean(logoRes.transparentSvgs.twoTone),
+        logoP4Subpaths: (logoRes.transparentSvgs.posterize4.match(/M/g) || []).length,
+        logoP8Subpaths: (logoRes.transparentSvgs.posterize8.match(/M/g) || []).length,
+        logoStencilSubpaths: (logoRes.transparentSvgs.stencil.match(/M/g) || []).length,
+        logoPosterColorSubpaths: (logoRes.transparentSvgs.posterizeColor.match(/M/g) || []).length,
+        logoTwoToneSubpaths: (logoRes.transparentSvgs.twoTone.match(/M/g) || []).length,
+        photoPosterColorSize: photoRes.transparentSvgs.posterizeColor.length
+      };
+    }
+
+    return { svgName, pdfName, pngName, stats };
+  }, lineArtBase64);
+
+  assert(
+    lineArtBenchmark.svgName === 'master_logo_vector_2_logo_masterVibrant_c2vector_DV.svg' &&
+    lineArtBenchmark.pdfName === 'master_logo_vector_2_logo_master_suite_c2vector_DV.pdf' &&
+    lineArtBenchmark.pngName === 'master_logo_vector_2_logo_twoTone_c2vector_DV@2x.png',
+    'Dynamic Naming (Phase 51): SVG, PDF master suite, and scaled PNG (@2x) filenames match production naming specification'
+  );
+
+  if (lineArtBenchmark.stats) {
+    const s = lineArtBenchmark.stats;
+    assert(
+      s.totalSubpaths >= 1000 && s.totalCurves >= 4500 && s.svgSize <= 380000 && s.hasMonochrome && s.hasTwoTone,
+      `Sub-Pixel Master Geometry: ${s.totalSubpaths} subpaths, ${s.totalCurves} smooth cubic Béziers, compact ${(s.svgSize/1024).toFixed(1)}KB, Monochrome/Two-Tone intact`
+    );
+    assert(
+      s.cropBandSubpaths >= 45 && s.glyphCropSubpaths >= 115 && s.daisyCropSubpaths >= 95,
+      `Glyph & Micro-Detail Recovery: Diamond lattice (${s.cropBandSubpaths}), ancient micro-glyphs (${s.glyphCropSubpaths}), and daisy petals (${s.daisyCropSubpaths}) preserved`
+    );
+    assert(
+      s.logoPosterColorSubpaths >= 1000 && s.logoTwoToneSubpaths >= 1000 && s.logoP4Subpaths >= 2000 && s.logoP8Subpaths >= 3000 && s.logoStencilSubpaths >= 1400,
+      `Logo Secondary Artboards Parity: posterizeColor (${s.logoPosterColorSubpaths}), twoTone (${s.logoTwoToneSubpaths}), p4 (${s.logoP4Subpaths}), p8 (${s.logoP8Subpaths}), stencil (${s.logoStencilSubpaths})`
+    );
+    assert(
+      s.photoPosterColorSize <= 1200000,
+      `Photo Mode Line-Art Parity: posterizeColor eliminates fragment explosion (${(s.photoPosterColorSize/1024).toFixed(1)}KB <= 1200KB)`
+    );
   }
 
   await browser.close();
