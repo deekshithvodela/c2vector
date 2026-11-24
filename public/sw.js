@@ -3,14 +3,8 @@
  * Provides 100% offline capability and instant app launching
  */
 
-const CACHE_NAME = 'c2vector-v12';
+const CACHE_NAME = 'c2vector-__SW_CACHE_VERSION__';
 const PRECACHE_ASSETS = [
-  './',
-  './index.html',
-  './workflow/',
-  './workflow/index.html',
-  './about/',
-  './about/index.html',
   './manifest.webmanifest',
   './favicon.ico',
   './vendor/jspdf.umd.min.js',
@@ -27,7 +21,7 @@ const PRECACHE_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Precaching application shell & vendor assets');
+      console.log('[Service Worker] Precaching static assets for', CACHE_NAME);
       return cache.addAll(PRECACHE_ASSETS);
     }).then(() => self.skipWaiting())
   );
@@ -44,26 +38,49 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Cache-first with network fallback
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+  const isNavigation =
+    event.request.mode === 'navigate' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('/') ||
+    url.pathname.endsWith('sw.js') ||
+    url.pathname.endsWith('manifest.webmanifest');
+
+  // Network-First for HTML/navigation so new deployments never serve stale index.html referencing deleted chunk hashes
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-cache' })
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok && networkResponse.type === 'basic') {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Cache-First for content-hashed Vite bundles and static assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
       return fetch(event.request).then((networkResponse) => {
-        // Cache valid responses dynamically
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+        if (networkResponse && networkResponse.ok && networkResponse.type === 'basic') {
+          const contentType = networkResponse.headers.get('content-type') || '';
+          const isScriptOrStyle = url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
+          // Never cache an HTML 404 fallback under a JS/CSS asset key
+          if (!(isScriptOrStyle && contentType.includes('text/html'))) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
         }
         return networkResponse;
-      }).catch(() => {
-        // Fallback to cached index.html for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
       });
     })
   );

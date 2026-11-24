@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vectorization Architecture &amp; Pipeline — c2vector</title>
-  <meta name="description" content="Explore c2vector's 6-step client-side vector synthesis pipeline: bicubic HD resampling, Canny sub-pixel edges, CIELAB quantization, continuous Bézier tracing, and 13-page vector PDF compilation.">
+  <meta name="description" content="Explore c2vector's 6-step client-side vector synthesis pipeline: bicubic HD resampling, Canny sub-pixel edges, CIELAB quantization, continuous Bézier tracing, Canva-ready chunking, and 14-page vector PDF compilation.">
   <meta name="author" content="Deekshith Vodela">
   <link rel="canonical" href="https://deekshithvodela.github.io/c2vector/workflow/">
   <meta name="theme-color" content="#0b0d10" media="(prefers-color-scheme: dark)">
@@ -18,7 +18,8 @@
   <script>
     (function() {
       try {
-        const savedTheme = localStorage.getItem('c2vector-theme') || 'dark';
+        const rawTheme = localStorage.getItem('c2vector-theme');
+        const savedTheme = rawTheme === 'light' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', savedTheme);
         if (savedTheme === 'dark') {
           document.documentElement.classList.add('dark');

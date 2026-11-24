@@ -20,8 +20,8 @@ Only the current version hosted on the `main` branch and served via GitHub Pages
 
 | Version | Supported |
 |---|---|
-| Latest `main` / `c2vector-v12` | ✅ Yes |
-| Historical / Pre-v12 releases | ❌ No |
+| Latest `main` (build-stamped Service Worker & cache/cookie hygiene) | ✅ Yes |
+| Historical / Unstamped legacy releases | ❌ No |
 
 ---
 

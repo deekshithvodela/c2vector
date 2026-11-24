@@ -166,16 +166,16 @@ var require_utils = __commonJS({
           var p2 = curve.c[i3 + 2];
           if (tag === "CURVE") {
             path.push(
-              "C " + fixed(p0.x * scale.x) + " " + fixed(p0.y * scale.y) + ", " + fixed(p1.x * scale.x) + " " + fixed(p1.y * scale.y) + ", " + fixed(p2.x * scale.x) + " " + fixed(p2.y * scale.y)
+              "C" + fixed(p0.x * scale.x) + " " + fixed(p0.y * scale.y) + " " + fixed(p1.x * scale.x) + " " + fixed(p1.y * scale.y) + " " + fixed(p2.x * scale.x) + " " + fixed(p2.y * scale.y)
             );
           } else if (tag === "CORNER") {
             path.push(
-              "L " + fixed(p1.x * scale.x) + " " + fixed(p1.y * scale.y) + " " + fixed(p2.x * scale.x) + " " + fixed(p2.y * scale.y)
+              "L" + fixed(p1.x * scale.x) + " " + fixed(p1.y * scale.y) + " " + fixed(p2.x * scale.x) + " " + fixed(p2.y * scale.y)
             );
           }
         });
         path.push("Z");
-        return path.join(" ");
+        return path.join(" ").replace(/ Z$/, "Z");
       },
       bezier: function bezier(t, p0, p1, p2, p3) {
         var s = 1 - t, res = new Point();

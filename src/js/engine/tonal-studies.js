@@ -67,25 +67,16 @@ export function generateMonochromeMap(pixels, width, height, threshold) {
 
 /**
  * Generates bridge-connected structural stencil
- * Adds vertical/horizontal anchor bridges across isolated floating islands
+ * Adds solid border frame and clean cut geometry for laser & vinyl plotters
  */
 export function generateBridgeStencilMap(monochromeMap, width, height, bridgeWidth = 3, gridInterval = 48) {
   const stencil = new Uint8Array(monochromeMap);
 
-  // Carve structural grid bridges to support detached physical cut islands
+  // Border reinforcement: maintains structural outer frame for physical stencil handling
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      // Border reinforcement
       if (x < 6 || x >= width - 6 || y < 6 || y >= height - 6) {
-        stencil[idx] = 0; // Solid boundary frame
-        continue;
-      }
-
-      // Periodic vertical bridge ribs
-      if (x % gridInterval < bridgeWidth && stencil[idx] === 255) {
-        // Connect to nearest dark region if bridging islands
-        stencil[idx] = 0;
+        stencil[y * width + x] = 0; // Solid boundary frame
       }
     }
   }
@@ -192,6 +183,80 @@ export function generateExactAlphaMask(pixels, width, height, options = {}) {
  * @param {object} [options] - Configuration thresholds
  * @returns {Uint8Array} - Unified 1-bit binary mask (1 = ink, 0 = substrate)
  */
+/**
+ * Shared 2-Pass Connected Component Labeling (Union-Find) on a 1-bit binary mask.
+ * Returns resolved `labels` array and `stats` Map<rootLabel, { minX, maxX, minY, maxY, count, pixels? }>.
+ */
+function labelConnectedComponents(binaryMask, width, height, collectPixels = false) {
+  const total = width * height;
+  const labels = new Int32Array(total);
+  const parent = [0];
+  let nextLabel = 1;
+
+  function find(i) {
+    let root = i;
+    while (parent[root] !== root) root = parent[root];
+    let curr = i;
+    while (curr !== root) {
+      const nxt = parent[curr];
+      parent[curr] = root;
+      curr = nxt;
+    }
+    return root;
+  }
+
+  for (let y = 0; y < height; y++) {
+    const yOff = y * width;
+    for (let x = 0; x < width; x++) {
+      const idx = yOff + x;
+      if (binaryMask[idx] === 0) continue;
+      const up = y > 0 ? labels[idx - width] : 0;
+      const left = x > 0 ? labels[idx - 1] : 0;
+      if (up === 0 && left === 0) {
+        labels[idx] = nextLabel;
+        parent.push(nextLabel);
+        nextLabel++;
+      } else if (up !== 0 && left === 0) {
+        labels[idx] = up;
+      } else if (up === 0 && left !== 0) {
+        labels[idx] = left;
+      } else {
+        labels[idx] = up;
+        if (up !== left) {
+          const rA = find(up);
+          const rB = find(left);
+          if (rA !== rB) parent[rA] = rB;
+        }
+      }
+    }
+  }
+
+  const stats = new Map();
+  for (let idx = 0; idx < total; idx++) {
+    if (labels[idx] === 0) continue;
+    const root = find(labels[idx]);
+    labels[idx] = root;
+    const x = idx % width;
+    const y = Math.floor(idx / width);
+    let s = stats.get(root);
+    if (!s) {
+      s = collectPixels
+        ? { minX: x, maxX: x, minY: y, maxY: y, count: 0, pixels: [] }
+        : { minX: x, maxX: x, minY: y, maxY: y, count: 0 };
+      stats.set(root, s);
+    } else {
+      if (x < s.minX) s.minX = x;
+      if (x > s.maxX) s.maxX = x;
+      if (y < s.minY) s.minY = y;
+      if (y > s.maxY) s.maxY = y;
+    }
+    s.count++;
+    if (collectPixels) s.pixels.push(idx);
+  }
+
+  return { labels, stats };
+}
+
 export function generateOptimizedLineArtMask(inkDensities, width, height, options = {}) {
   const isHighRes = Math.max(width, height) >= 1400;
   const strokeThresh = options.strokeThreshold !== undefined ? options.strokeThreshold : (isHighRes ? 128 : 105);
@@ -209,73 +274,7 @@ export function generateOptimizedLineArtMask(inkDensities, width, height, option
     if (val >= glyphThresh) glyphMask[i] = 1;
   }
 
-  // 2-Pass Connected Component Labeling on glyphMask using Union-Find
-  const labels = new Int32Array(total);
-  let nextLabel = 1;
-  const parent = [0];
-
-  function find(i) {
-    let root = i;
-    while (parent[root] !== root) root = parent[root];
-    let curr = i;
-    while (curr !== root) {
-      let nxt = parent[curr];
-      parent[curr] = root;
-      curr = nxt;
-    }
-    return root;
-  }
-
-  function union(i, j) {
-    const rootI = find(i);
-    const rootJ = find(j);
-    if (rootI !== rootJ) parent[rootI] = rootJ;
-  }
-
-  for (let y = 0; y < height; y++) {
-    const yOff = y * width;
-    for (let x = 0; x < width; x++) {
-      const idx = yOff + x;
-      if (glyphMask[idx] === 0) continue;
-
-      const up = y > 0 ? labels[idx - width] : 0;
-      const left = x > 0 ? labels[idx - 1] : 0;
-
-      if (up === 0 && left === 0) {
-        labels[idx] = nextLabel;
-        parent.push(nextLabel);
-        nextLabel++;
-      } else if (up !== 0 && left === 0) {
-        labels[idx] = up;
-      } else if (up === 0 && left !== 0) {
-        labels[idx] = left;
-      } else {
-        labels[idx] = up;
-        if (up !== left) union(up, left);
-      }
-    }
-  }
-
-  // Aggregate bounding boxes and pixel indices for each component
-  const compStats = new Map();
-  for (let idx = 0; idx < total; idx++) {
-    if (labels[idx] === 0) continue;
-    const root = find(labels[idx]);
-    labels[idx] = root;
-    const x = idx % width;
-    const y = Math.floor(idx / width);
-    let s = compStats.get(root);
-    if (!s) {
-      s = { minX: x, maxX: x, minY: y, maxY: y, count: 0, pixels: [] };
-      compStats.set(root, s);
-    }
-    if (x < s.minX) s.minX = x;
-    if (x > s.maxX) s.maxX = x;
-    if (y < s.minY) s.minY = y;
-    if (y > s.maxY) s.maxY = y;
-    s.count++;
-    s.pixels.push(idx);
-  }
+  const { stats: compStats } = labelConnectedComponents(glyphMask, width, height, true);
 
   // Promote compact components (letterforms, runes, handwriting, dots, small symbols)
   for (const [, s] of compStats.entries()) {
@@ -289,4 +288,84 @@ export function generateOptimizedLineArtMask(inkDensities, width, height, option
   }
 
   return finalMask;
+}
+
+/**
+ * Connected-Component Glyph Detector for chromatic & achromatic foreground masks.
+ * Separates compact typographic glyphs and symbols from large structural shapes
+ * so each domain can use tailored curve-fitting tolerances without edge wiggles.
+ */
+export function detectGlyphMask(binaryMask, width, height, options = {}) {
+  const total = width * height;
+  const maxGlyphW = options.maxGlyphW || Math.max(16, Math.round(width * 0.12));
+  const maxGlyphH = options.maxGlyphH || Math.max(16, Math.round(height * 0.12));
+  const minGlyphPx = options.minGlyphPx || 6;
+  const maxGlyphArea = options.maxGlyphArea || Math.round(total * 0.04);
+
+  const { labels, stats } = labelConnectedComponents(binaryMask, width, height, false);
+
+  const isGlyphRoot = new Set();
+  for (const [root, s] of stats.entries()) {
+    const cw = s.maxX - s.minX + 1;
+    const ch = s.maxY - s.minY + 1;
+    const aspect = cw / Math.max(1, ch);
+    if (
+      cw <= maxGlyphW &&
+      ch <= maxGlyphH &&
+      s.count >= minGlyphPx &&
+      s.count <= maxGlyphArea &&
+      aspect >= 0.15 &&
+      aspect <= 6.5
+    ) {
+      isGlyphRoot.add(root);
+    }
+  }
+
+  const glyphMask = new Uint8Array(total);
+  const structuralMask = new Uint8Array(total);
+  for (let idx = 0; idx < total; idx++) {
+    if (binaryMask[idx] === 0) continue;
+    if (isGlyphRoot.has(labels[idx])) {
+      glyphMask[idx] = 1;
+    } else {
+      structuralMask[idx] = 1;
+    }
+  }
+
+  return { glyphMask, structuralMask, glyphCount: isGlyphRoot.size };
+}
+
+/**
+ * Corner-safe anti-wiggle edge conditioning for typographic glyph masks.
+ * Suppresses 1px alternating staircase teeth without breaking 1px thin strokes or rounding 90° terminals.
+ */
+export function smoothGlyphStaircases(mask, width, height) {
+  const out = new Uint8Array(mask);
+  for (let y = 1; y < height - 1; y++) {
+    const yOff = y * width;
+    for (let x = 1; x < width - 1; x++) {
+      const idx = yOff + x;
+      const cur = mask[idx];
+      const u = mask[idx - width];
+      const d = mask[idx + width];
+      const l = mask[idx - 1];
+      const r = mask[idx + 1];
+      const n8 = u + d + l + r +
+        mask[idx - width - 1] + mask[idx - width + 1] +
+        mask[idx + width - 1] + mask[idx + width + 1];
+
+      if (cur === 1) {
+        // Prune isolated 1px staircase tooth only if it does not bridge opposite cardinal strokes
+        if (n8 <= 2 && !(u && d) && !(l && r)) {
+          out[idx] = 0;
+        }
+      } else {
+        // Fill single-pixel diagonal staircase notch along solid stems (keeps letter counters open)
+        if (n8 >= 6 && (u + d + l + r) >= 3) {
+          out[idx] = 1;
+        }
+      }
+    }
+  }
+  return out;
 }

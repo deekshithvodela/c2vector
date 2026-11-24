@@ -18,6 +18,11 @@ const ARTBOARD_METADATA = {
     subtitle: '64 Color Tiers Authentic Source Match',
     filename: 'master_faithful_vector.svg'
   },
+  canvaOptimized: {
+    title: 'Canva-Optimized Master Vector (≤4 Editable Colors)',
+    subtitle: 'Unlocks Canva Color Swatches, Flat SVG 1.1 & Chunked Subpaths',
+    filename: 'master_canva_optimized.svg'
+  },
   posterizeColor: {
     title: 'Color Posterize Print Plate (8-Tone Planar)',
     subtitle: 'Bold Graphic Chromatic Planes for Silkscreen Art',
@@ -86,6 +91,11 @@ const LOGO_ARTBOARD_METADATA = {
     title: 'Master Faithful Vector (Source Spot Match)',
     subtitle: 'Exact Source Spot Colors with Corner-Preserving Splines',
     filename: 'master_faithful_logo.svg'
+  },
+  canvaOptimized: {
+    title: 'Canva-Optimized Master Logo (≤4 Editable Colors)',
+    subtitle: 'Unlocks Canva Color Swatches, Flat SVG 1.1 & Chunked Subpaths',
+    filename: 'logo_canva_optimized.svg'
   },
   posterizeColor: {
     title: 'Spot-Color Reduction (Up to 8 Inks)',
@@ -158,9 +168,15 @@ let initialPanX = 0;
 let initialPanY = 0;
 let isGridOn = false;
 let deferredPrompt = null;
-let currentEdgeOpacity = 0.75;
+let currentEdgeOpacity = 0;
 let areEdgesVisible = true;
 let currentSourceFileName = 'c2vector_artwork';
+let currentSourceImagePayload = null;
+let currentStrokeWeight = 0;
+let currentColorBudget = 8;
+let pendingColorBudget = 8;
+let originalSvgsSnapshot = null;
+let activeSoloPath = null;
 
 // DOM References
 const dropzone = document.getElementById('dropzone');
@@ -198,6 +214,19 @@ const metricSize = document.getElementById('metricSize');
 const workbenchPaletteCard = document.getElementById('workbenchPaletteCard');
 const workbenchPaletteSwatches = document.getElementById('workbenchPaletteSwatches');
 const paletteCountBadge = document.getElementById('paletteCountBadge');
+
+// Flagship Vector Pro Studio Controls
+const logoProStudioCard = document.getElementById('logoProStudioCard');
+const colorBudgetLabel = document.getElementById('colorBudgetLabel');
+const colorBudgetSlider = document.getElementById('colorBudgetSlider');
+const colorBudgetVal = document.getElementById('colorBudgetVal');
+const btnApplyColorBudget = document.getElementById('btnApplyColorBudget');
+const presetChips = document.querySelectorAll('.preset-chip');
+const strokeWeightSlider = document.getElementById('strokeWeightSlider');
+const strokeWeightVal = document.getElementById('strokeWeightVal');
+const btnResetStroke = document.getElementById('btnResetStroke');
+const studioLayersList = document.getElementById('studioLayersList');
+const btnResetLayers = document.getElementById('btnResetLayers');
 
 const copyToast = document.getElementById('copyToast');
 const toastMsg = document.getElementById('toastMsg');
@@ -306,9 +335,48 @@ function initWorker() {
   };
 }
 
+// Version-Stamped Cache & Cookie Hygiene on Rollouts
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+(function enforceCleanRolloutState() {
+  try {
+    const storedVersion = localStorage.getItem('c2vector-app-version');
+    if (storedVersion && storedVersion !== APP_VERSION) {
+      // Clear stale session state and expire any non-essential domain cookies on version upgrade
+      sessionStorage.clear();
+      if (document.cookie) {
+        document.cookie.split(';').forEach((c) => {
+          const name = c.split('=')[0].trim();
+          if (name) {
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+          }
+        });
+      }
+      const savedTheme = localStorage.getItem('c2vector-theme');
+      if (savedTheme !== 'dark' && savedTheme !== 'light') {
+        localStorage.removeItem('c2vector-theme');
+      }
+      if ('caches' in window && APP_VERSION !== 'dev') {
+        const expectedCache = `c2vector-${APP_VERSION}`;
+        caches.keys().then((keys) => {
+          keys.filter((k) => k !== expectedCache).forEach((k) => caches.delete(k));
+        }).catch(() => {});
+      }
+    }
+    localStorage.setItem('c2vector-app-version', APP_VERSION);
+  } catch {}
+})();
+
 // Service Worker Registration for PWA Offline Caching
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      // Only notify on genuine SW upgrade (never reload mid-session or on first install)
+      if (hadController && typeof showCopyToast === 'function') {
+        showCopyToast('App updated to latest version — refresh when ready');
+      }
+    });
+
     navigator.serviceWorker.register('./sw.js').then((reg) => {
       // Proactively check for updated worker on load
       reg.update().catch(() => {});
@@ -346,8 +414,8 @@ async function triggerInstallPrompt() {
 
 btnInstallPwa?.addEventListener('click', triggerInstallPrompt);
 
-// Engine Mode Switcher (Photo vs Logo & Typography)
-let currentEngineMode = 'photo';
+// Engine Mode Switcher (Logo & Typography default first, Photo / Decal second)
+let currentEngineMode = 'logo';
 
 function setEngineMode(mode) {
   currentEngineMode = mode;
@@ -512,6 +580,15 @@ async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
 
+  // Retain pristine source raster payload in memory for real-time spot color quantization tuning
+  currentSourceImagePayload = {
+    data: new Uint8ClampedArray(data),
+    width: w,
+    height: h,
+    mode: mode,
+    imageName: currentSourceFileName
+  };
+
   // Proactive memory cleanup for large uploaded images
   canvas.width = 1;
   canvas.height = 1;
@@ -525,7 +602,7 @@ async function processImageUrl(imageUrl, imageName, mode = currentEngineMode) {
     height: h,
     options: {
       mode: mode,
-      tiers: mode === 'logo' ? 32 : 48,
+      tiers: mode === 'logo' ? 32 : 24,
       maxColors: 32
     }
   });
@@ -674,14 +751,14 @@ function renderWorkbench(results) {
     });
   }
 
-  // Initialize background knockout & grid state based on detected transparency
+  // Initialize alpha-only transparency grid state
   isGridOn = Boolean(results.isTransparentLogo || results.isTransparentImage || results.knockoutBackground);
   if (btnToggleGrid) {
     btnToggleGrid.classList.toggle('active', isGridOn);
     btnToggleGrid.setAttribute('aria-pressed', isGridOn ? 'true' : 'false');
     btnToggleGrid.title = isGridOn
-      ? 'Background removed: Transparent SVG (Click to restore solid background)'
-      : 'Solid background (Click to remove background for transparent SVG)';
+      ? 'Transparency grid ON (alpha-only transparent SVG; click to show solid backdrop)'
+      : 'Solid backdrop plate ON (click to toggle transparency grid)';
   }
   if (viewport) {
     viewport.classList.toggle('grid-pattern', isGridOn);
@@ -689,6 +766,40 @@ function renderWorkbench(results) {
   if (results.transparentSvgs && results.solidSvgs) {
     results.svgs = isGridOn ? results.transparentSvgs : results.solidSvgs;
   }
+
+  // Snapshot original SVGs for non-destructive layer reset
+  if (results) {
+    originalSvgsSnapshot = {
+      solid: results.solidSvgs ? { ...results.solidSvgs } : (results.svgs ? { ...results.svgs } : {}),
+      transparent: results.transparentSvgs ? { ...results.transparentSvgs } : (results.svgs ? { ...results.svgs } : {})
+    };
+  }
+
+  // Show Vector Pro Studio Card in BOTH Logo Mode and Photo Mode
+  const isLogo = results && results.mode === 'logo';
+  if (logoProStudioCard) {
+    logoProStudioCard.style.display = 'flex';
+  }
+
+  // Synchronize color/tier budget slider with current results
+  const unit = isLogo ? 'Inks' : 'Tiers';
+  const budget = isLogo
+    ? (results.options?.maxColors || results.tiers || 8)
+    : (results.options?.tiers || results.tiers || 48);
+  currentColorBudget = budget;
+  pendingColorBudget = budget;
+  if (colorBudgetLabel) {
+    colorBudgetLabel.textContent = isLogo ? 'Spot Color Budget' : 'Color Tier Budget';
+  }
+  if (colorBudgetSlider) {
+    colorBudgetSlider.max = isLogo ? '32' : '48';
+    colorBudgetSlider.value = String(budget);
+  }
+  if (colorBudgetVal) colorBudgetVal.textContent = `${budget} ${unit}`;
+  if (btnApplyColorBudget) btnApplyColorBudget.classList.remove('is-dirty');
+  presetChips.forEach(chip => {
+    chip.classList.toggle('active', parseInt(chip.getAttribute('data-colors'), 10) === budget);
+  });
 
   // Display default artboard
   displayActiveArtboard();
@@ -737,6 +848,16 @@ function displayActiveArtboard() {
     edgeOpacityVal.textContent = `${Math.round(currentEdgeOpacity * 100)}%`;
   }
   updateContourOpacityInViewport();
+  syncContourOpacityInMemory();
+
+  // Re-apply active stroke weight if non-zero
+  if (currentStrokeWeight > 0) {
+    applyStrokeWeight(currentStrokeWeight, false);
+  }
+
+  // Populate dynamic Studio Layers List for active artboard
+  populateStudioLayersList();
+
   applySvgTransform(false);
 }
 
@@ -769,6 +890,7 @@ edgeOpacitySlider?.addEventListener('input', (e) => {
   currentEdgeOpacity = pct / 100;
   if (edgeOpacityVal) edgeOpacityVal.textContent = `${pct}%`;
   updateContourOpacityInViewport();
+  syncContourOpacityInMemory();
 });
 
 edgeOpacitySlider?.addEventListener('change', () => {
@@ -782,6 +904,386 @@ btnToggleEdges?.addEventListener('click', () => {
   btnToggleEdges.textContent = areEdgesVisible ? 'Visible' : 'Hidden';
   updateContourOpacityInViewport();
   syncContourOpacityInMemory();
+  syncContourOpacityInMemory();
+});
+
+// --------------------------------------------------------------------------
+// Flagship Logo Pro Studio: Real-Time Vector Layer, Stroke & Color Quantization
+// --------------------------------------------------------------------------
+function colorToHex(colorStr) {
+  if (!colorStr) return '#000000';
+  const clean = colorStr.trim();
+  if (clean.startsWith('#')) {
+    if (clean.length === 4) {
+      return '#' + clean[1] + clean[1] + clean[2] + clean[2] + clean[3] + clean[3];
+    }
+    return clean.slice(0, 7);
+  }
+  const match = clean.match(/\d+/g);
+  if (match && match.length >= 3) {
+    const r = Math.min(255, Math.max(0, parseInt(match[0], 10))).toString(16).padStart(2, '0');
+    const g = Math.min(255, Math.max(0, parseInt(match[1], 10))).toString(16).padStart(2, '0');
+    const b = Math.min(255, Math.max(0, parseInt(match[2], 10))).toString(16).padStart(2, '0');
+    return `#${r}${g}${b}`;
+  }
+  return '#000000';
+}
+
+function syncViewportSvgToMemory() {
+  if (!currentResults || !viewport) return;
+  const viewportSvg = viewport.querySelector('svg');
+  if (viewportSvg) {
+    const clone = viewportSvg.cloneNode(true);
+    if (baseViewBox.width > 0 && baseViewBox.height > 0) {
+      clone.setAttribute('viewBox', `${baseViewBox.minX} ${baseViewBox.minY} ${baseViewBox.width} ${baseViewBox.height}`);
+    }
+    const rawSvg = new XMLSerializer().serializeToString(clone);
+    currentResults.svgs[activeArtboard] = rawSvg;
+    const kbSize = (new Blob([rawSvg]).size / 1024).toFixed(1);
+    if (metricSize) metricSize.textContent = `${kbSize} KB`;
+  }
+}
+
+function getActiveSvgPaths() {
+  if (!viewport) return [];
+  const svg = viewport.querySelector('svg');
+  if (!svg) return [];
+  return Array.from(svg.querySelectorAll('path')).filter(p => {
+    const fill = p.getAttribute('fill') || p.style.fill;
+    return fill && fill !== 'none' && p.id !== 'logo-silhouette-base' && p.id !== 'subject-silhouette-base';
+  });
+}
+
+function populateStudioLayersList() {
+  if (!studioLayersList || !viewport) return;
+  studioLayersList.innerHTML = '';
+  activeSoloPath = null;
+
+  const paths = getActiveSvgPaths();
+  if (paths.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.cssText = 'color: var(--text-muted); font-size: 0.72rem; padding: 8px; text-align: center;';
+    emptyMsg.textContent = 'No editable vector paths on active artboard';
+    studioLayersList.appendChild(emptyMsg);
+    return;
+  }
+
+  // Group paths by normalized Hex Color so chunked or multi-path layers appear as clean swatches
+  const groupMap = new Map();
+  paths.forEach((path) => {
+    const currentFill = path.style.fill || path.getAttribute('fill') || '#000000';
+    const hexColor = colorToHex(currentFill).toLowerCase();
+    if (!groupMap.has(hexColor)) {
+      groupMap.set(hexColor, { hex: hexColor, paths: [] });
+    }
+    groupMap.get(hexColor).paths.push(path);
+  });
+
+  const colorGroups = Array.from(groupMap.values());
+
+  colorGroups.forEach((group, idx) => {
+    const hexColor = group.hex;
+    const groupPaths = group.paths;
+    const layerId = groupPaths[0].id || `color-group-${idx + 1}`;
+    const isHidden = groupPaths.every(p => p.style.display === 'none');
+
+    const item = document.createElement('div');
+    item.className = 'layer-item' + (isHidden ? ' is-hidden' : '');
+    item.setAttribute('role', 'listitem');
+    item.setAttribute('data-layer-id', layerId);
+
+    // Left controls: Visibility toggle, Solo, Color chip, HEX label, Name
+    const leftDiv = document.createElement('div');
+    leftDiv.className = 'layer-left';
+
+    const eyeHiddenSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+    const eyeVisibleSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+
+    // Visibility toggle (Eye)
+    const visBtn = document.createElement('button');
+    visBtn.type = 'button';
+    visBtn.className = 'layer-vis-btn';
+    visBtn.title = isHidden ? 'Show layer' : 'Hide layer';
+    visBtn.setAttribute('aria-label', `Toggle visibility for layer ${idx + 1}`);
+    visBtn.innerHTML = isHidden ? eyeHiddenSvg : eyeVisibleSvg;
+
+    visBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nowHidden = groupPaths.every(p => p.style.display === 'none');
+      groupPaths.forEach(p => { p.style.display = nowHidden ? '' : 'none'; });
+      item.classList.toggle('is-hidden', !nowHidden);
+      visBtn.title = !nowHidden ? 'Show layer' : 'Hide layer';
+      visBtn.innerHTML = !nowHidden ? eyeHiddenSvg : eyeVisibleSvg;
+      syncViewportSvgToMemory();
+    });
+
+    // Solo button (S)
+    const soloBtn = document.createElement('button');
+    soloBtn.type = 'button';
+    soloBtn.className = 'layer-solo-btn' + (activeSoloPath === hexColor ? ' active' : '');
+    soloBtn.title = 'Solo isolate this color layer';
+    soloBtn.setAttribute('aria-label', `Solo isolate layer ${idx + 1}`);
+    soloBtn.textContent = 'S';
+    soloBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (activeSoloPath === hexColor) {
+        activeSoloPath = null;
+        paths.forEach(p => { p.style.display = ''; });
+      } else {
+        activeSoloPath = hexColor;
+        const activeSet = new Set(groupPaths);
+        paths.forEach(p => { p.style.display = activeSet.has(p) ? '' : 'none'; });
+      }
+      populateStudioLayersList();
+      syncViewportSvgToMemory();
+    });
+
+    // Color Swatch Chip & Native Color Picker
+    const colorChip = document.createElement('label');
+    colorChip.className = 'layer-color-chip';
+    colorChip.style.backgroundColor = hexColor;
+    colorChip.title = `Change layer color (${hexColor})`;
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.className = 'layer-color-input';
+    colorInput.value = hexColor;
+    colorInput.setAttribute('aria-label', `Color picker for layer ${idx + 1}`);
+
+    // Live recolor listener across all paths in the color group (0ms latency)
+    colorInput.addEventListener('input', (e) => {
+      const newHex = e.target.value;
+      group.hex = newHex.toLowerCase();
+      colorChip.style.backgroundColor = newHex;
+      hexText.textContent = newHex.toUpperCase();
+      groupPaths.forEach(p => {
+        p.setAttribute('fill', newHex);
+        p.style.fill = newHex;
+        if (currentStrokeWeight > 0) {
+          p.style.stroke = newHex;
+          p.setAttribute('stroke', newHex);
+        }
+      });
+      syncViewportSvgToMemory();
+    });
+
+    colorChip.appendChild(colorInput);
+
+    // HEX Text Label
+    const hexText = document.createElement('span');
+    hexText.className = 'layer-hex-text';
+    hexText.textContent = hexColor.toUpperCase();
+    hexText.title = 'Click to copy HEX code';
+    hexText.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyHexToClipboard(group.hex, colorChip);
+    });
+
+    // Layer Name / Path Count Badge
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'layer-name';
+    nameSpan.textContent = groupPaths.length > 1 ? `L${idx + 1} ×${groupPaths.length}` : `L${idx + 1}`;
+    nameSpan.title = `${layerId} (${groupPaths.length} path${groupPaths.length > 1 ? 's' : ''})`;
+
+    leftDiv.appendChild(visBtn);
+    leftDiv.appendChild(soloBtn);
+    leftDiv.appendChild(colorChip);
+    leftDiv.appendChild(hexText);
+    leftDiv.appendChild(nameSpan);
+
+    // Right controls: Reorder Up, Reorder Down, Delete
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'layer-actions';
+
+    // Move Up (Bring forward: move last path's nextSibling before first path, or shift each forward)
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'layer-action-btn';
+    upBtn.title = 'Bring forward (higher layer order)';
+    upBtn.setAttribute('aria-label', `Bring forward layer ${idx + 1}`);
+    upBtn.textContent = '▲';
+    upBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      let moved = false;
+      for (let k = groupPaths.length - 1; k >= 0; k--) {
+        const p = groupPaths[k];
+        if (p.nextElementSibling && !groupPaths.includes(p.nextElementSibling)) {
+          p.parentNode.insertBefore(p.nextElementSibling, p);
+          moved = true;
+        }
+      }
+      if (moved) {
+        populateStudioLayersList();
+        syncViewportSvgToMemory();
+      }
+    });
+
+    // Move Down (Send backward)
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'layer-action-btn';
+    downBtn.title = 'Send backward (lower layer order)';
+    downBtn.setAttribute('aria-label', `Send backward layer ${idx + 1}`);
+    downBtn.textContent = '▼';
+    downBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      let moved = false;
+      for (let k = 0; k < groupPaths.length; k++) {
+        const p = groupPaths[k];
+        if (p.previousElementSibling && !groupPaths.includes(p.previousElementSibling)) {
+          p.parentNode.insertBefore(p, p.previousElementSibling);
+          moved = true;
+        }
+      }
+      if (moved) {
+        populateStudioLayersList();
+        syncViewportSvgToMemory();
+      }
+    });
+
+    // Delete Layer Group (✕)
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'layer-action-btn del';
+    delBtn.title = 'Delete this color layer from vector SVG';
+    delBtn.setAttribute('aria-label', `Delete layer ${idx + 1}`);
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      groupPaths.forEach(p => p.remove());
+      populateStudioLayersList();
+      syncViewportSvgToMemory();
+    });
+
+    actionsDiv.appendChild(upBtn);
+    actionsDiv.appendChild(downBtn);
+    actionsDiv.appendChild(delBtn);
+
+    item.appendChild(leftDiv);
+    item.appendChild(actionsDiv);
+    studioLayersList.appendChild(item);
+  });
+}
+
+function applyStrokeWeight(val, shouldSync = true) {
+  currentStrokeWeight = val;
+  if (strokeWeightVal) {
+    strokeWeightVal.textContent = `${val.toFixed(1)} px`;
+  }
+  const paths = getActiveSvgPaths();
+  paths.forEach(p => {
+    if (val <= 0) {
+      p.style.stroke = '';
+      p.style.strokeWidth = '';
+      p.style.strokeLinejoin = '';
+      p.style.strokeLinecap = '';
+      p.style.paintOrder = '';
+      p.removeAttribute('stroke');
+      p.removeAttribute('stroke-width');
+      p.removeAttribute('stroke-linejoin');
+      p.removeAttribute('stroke-linecap');
+      p.removeAttribute('paint-order');
+    } else {
+      const fill = p.style.fill || p.getAttribute('fill') || '#000000';
+      p.style.stroke = fill;
+      p.style.strokeWidth = `${val}px`;
+      p.style.strokeLinejoin = 'round';
+      p.style.strokeLinecap = 'round';
+      p.style.paintOrder = 'stroke fill';
+      p.setAttribute('stroke', fill);
+      p.setAttribute('stroke-width', String(val));
+      p.setAttribute('stroke-linejoin', 'round');
+      p.setAttribute('stroke-linecap', 'round');
+      p.setAttribute('paint-order', 'stroke fill');
+    }
+  });
+
+  if (shouldSync) {
+    syncViewportSvgToMemory();
+  }
+}
+
+function handleColorBudgetChange(budget) {
+  pendingColorBudget = budget;
+  const isLogo = currentSourceImagePayload?.mode === 'logo' || currentResults?.mode === 'logo';
+  const unit = isLogo ? 'Inks' : 'Tiers';
+  if (colorBudgetVal) {
+    colorBudgetVal.textContent = `${budget} ${unit}`;
+  }
+  presetChips.forEach(chip => {
+    chip.classList.toggle('active', parseInt(chip.getAttribute('data-colors'), 10) === budget);
+  });
+  if (btnApplyColorBudget) {
+    btnApplyColorBudget.classList.toggle('is-dirty', budget !== currentColorBudget);
+  }
+}
+
+function recomputeColorBudget(budget) {
+  if (!currentSourceImagePayload) return;
+  currentColorBudget = budget;
+  pendingColorBudget = budget;
+  if (btnApplyColorBudget) {
+    btnApplyColorBudget.classList.remove('is-dirty');
+  }
+  showProgress();
+  initWorker();
+  worker.postMessage({
+    id: Date.now(),
+    rawPixels: currentSourceImagePayload.data,
+    width: currentSourceImagePayload.width,
+    height: currentSourceImagePayload.height,
+    options: {
+      mode: currentSourceImagePayload.mode,
+      tiers: budget,
+      maxColors: budget
+    }
+  });
+}
+
+// Vector Pro Studio Event Listeners
+strokeWeightSlider?.addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  applyStrokeWeight(val);
+});
+
+btnResetStroke?.addEventListener('click', () => {
+  if (strokeWeightSlider) strokeWeightSlider.value = '0';
+  applyStrokeWeight(0);
+});
+
+btnResetLayers?.addEventListener('click', () => {
+  if (!currentResults || !originalSvgsSnapshot) return;
+  const targetMap = isGridOn ? originalSvgsSnapshot.transparent : originalSvgsSnapshot.solid;
+  const originalSvg = targetMap?.[activeArtboard];
+  if (originalSvg) {
+    currentResults.svgs[activeArtboard] = originalSvg;
+    displayActiveArtboard();
+    showCopyToast('Layers reset to original vector state');
+  }
+});
+
+colorBudgetSlider?.addEventListener('input', (e) => {
+  const budget = parseInt(e.target.value, 10);
+  handleColorBudgetChange(budget);
+});
+
+colorBudgetSlider?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    recomputeColorBudget(pendingColorBudget);
+  }
+});
+
+presetChips.forEach(chip => {
+  chip.addEventListener('click', () => {
+    const budget = parseInt(chip.getAttribute('data-colors'), 10);
+    if (colorBudgetSlider) colorBudgetSlider.value = String(budget);
+    handleColorBudgetChange(budget);
+  });
+});
+
+btnApplyColorBudget?.addEventListener('click', () => {
+  recomputeColorBudget(pendingColorBudget);
 });
 
 // --------------------------------------------------------------------------
@@ -941,6 +1443,12 @@ window.__c2vectorState = {
   set currentSourceFileName(v) { currentSourceFileName = v; },
   get currentResults() { return currentResults; },
   get baseViewBox() { return baseViewBox; },
+  get currentStrokeWeight() { return currentStrokeWeight; },
+  get currentColorBudget() { return currentColorBudget; },
+  applyStrokeWeight,
+  handleColorBudgetChange,
+  populateStudioLayersList,
+  syncViewportSvgToMemory,
   applySvgTransform,
   resetPanAndZoom,
   renderViewBox,
@@ -1073,8 +1581,8 @@ btnToggleGrid?.addEventListener('click', () => {
   btnToggleGrid.classList.toggle('active', isGridOn);
   btnToggleGrid.setAttribute('aria-pressed', isGridOn ? 'true' : 'false');
   btnToggleGrid.title = isGridOn
-    ? 'Background removed: Transparent SVG (Click to restore solid background)'
-    : 'Solid background (Click to remove background for transparent SVG)';
+    ? 'Transparency grid ON (alpha-only transparent SVG; click to show solid backdrop)'
+    : 'Solid backdrop plate ON (click to toggle transparency grid)';
 
   viewport.classList.toggle('grid-pattern', isGridOn);
 
@@ -1141,6 +1649,7 @@ export function formatDownloadableSvg(svgStr) {
 
 btnDownloadSvg?.addEventListener('click', () => {
   if (!currentResults) return;
+  syncViewportSvgToMemory();
   const rawSvg = currentResults.svgs[activeArtboard];
   const svgStr = formatDownloadableSvg(rawSvg);
   const filename = getDynamicDownloadFilename(activeArtboard, 'svg');
@@ -1158,6 +1667,7 @@ btnDownloadSvg?.addEventListener('click', () => {
 
 btnDownloadPdf?.addEventListener('click', async () => {
   if (!currentResults) return;
+  syncViewportSvgToMemory();
   const origHtml = btnDownloadPdf.innerHTML;
   btnDownloadPdf.disabled = true;
   btnDownloadPdf.innerHTML = `<span>Compiling Vector PDF...</span>`;
@@ -1178,6 +1688,7 @@ btnDownloadPdf?.addEventListener('click', async () => {
 
 btnDownloadAllSvg?.addEventListener('click', async () => {
   if (!currentResults) return;
+  syncViewportSvgToMemory();
   const keys = Object.keys(currentResults.svgs);
 
   for (let i = 0; i < keys.length; i++) {
@@ -1218,6 +1729,7 @@ pngModal?.addEventListener('click', (e) => {
 
 btnConfirmPng?.addEventListener('click', async () => {
   if (!currentResults) return;
+  syncViewportSvgToMemory();
   const checked = document.querySelector('input[name="pngScale"]:checked');
   const scale = parseInt(checked?.value || '2', 10);
   const svgStr = currentResults.svgs[activeArtboard];

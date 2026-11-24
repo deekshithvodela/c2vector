@@ -45,32 +45,35 @@ Most online vectorizers suffer from one of three fatal flaws:
 - Images never travel across the network to any server, bucket, or third-party API.
 - All in-memory buffers and ImageData representations are immediately reclaimed when the browser tab is closed.
 
-### 2. 🔲 Dedicated Logo, Typography & Line-Art Engine
+### 2. 🔲 Dedicated Logo, Typography & Line-Art Engine (Default First Tab)
+- **Logo Mode First & Default:** Opens directly into Logo & Typography Mode, with Photo / Decal Mode alongside it.
 - **90-Degree Corner Preservation:** Tightened straight-line tolerance (`optTolerance: 0.08`) and aggressive corner retention (`alphaMax: 0.15`) ensure crisp right angles on corporate branding, sharp brackets, and geometric marks.
 - **Dual-Pass Glyph & Stroke Optimization:** For hand-drawn line art and intricate illustrations, a two-pass Connected Component Labeling (Union-Find) mask calibrates stroke thickness within ±0.5% of master line weight while preserving compact micro-glyphs, handwriting, and fine dots with smooth $G^1$ cubic Bézier curves (`alphaMax: 0.72`, `optTolerance: 0.10`).
-- **Exact Alpha Mask & Alpha-Bounded Color Trapping:** Directly preserves 100% of external and internal transparent cutouts (typography counter loops, filigree, negative space) while sealing adjacent color seams with 1px alpha-bounded trapping.
-- **Adaptive Natural Spot Color Discovery:** Clusters anti-aliased transition pixels into dominant spot colors (up to 32 inks) without artificial color clipping, plus **1-Click Transparent Background Knockout**.
+- **Alpha-Channel-Only Transparency & Prepress Trapping:** Preserves 100% of external and internal transparent cutouts (`alpha < 64`) without ever stripping white backgrounds from opaque images, while sealing adjacent color seams with 1px alpha-bounded trapping.
+- **Vector Pro Studio (Logo & Photo Modes):** Live 0ms-latency SVG DOM layer tree grouped by color swatch (visibility eye toggle, solo isolation, live color picker, z-index reorder, delete, non-destructive reset), real-time Stroke Weight / Kerf bleed compensator (`0–8 px`), `0%` default Edge Glaze, and a color/tier budget slider (`2–32 Inks` / `2–48 Tiers`, smart `24`-tier Photo default with variance-stopping & CIELAB $\Delta E$ consolidation) with an explicit **Apply** button.
+- **Glyph Detector & Anti-Wiggle Conditioning:** Connected-Component glyph separation with corner-safe anti-wiggle smoothing eliminates staircase ripples on curved/diagonal typography while lossless SVG path compaction trims ~15–20% of output size.
 
-### 3. 🎨 Multi-Tonal Silk Screen, Vinyl & CNC Stencils
-Decomposes input graphics into production-ready manufacturing layers:
+### 3. 🎨 Canva-Ready Master Artboard & Multi-Tonal Manufacturing Plates
+Decomposes input graphics into production-ready manufacturing layers across **14 specialized artboards**:
+- **Canva-Optimized Master (`canvaOptimized`):** Dedicated Master output in both Logo and Photo modes with **≤ 4 focal solid colors** (Max-Min $\Delta E$ × Chroma Focal Scoring + CIELAB pixel snapping so vivid accents like red eyes/stripes are preserved, leaving 1 color of headroom under Canva's 5-color swatch limit), zero translucent overlays, flat SVG 1.1 attributes, and hole-safe `evenodd` compound paths so Canva unlocks top-toolbar color swatches.
 - **1-bit Otsu Monochrome Silhouette:** Variance minimization for pure high-contrast vinyl cutting.
 - **2-Tone Duotone Print Plate:** Clean Key Dark & Midtone ink separation for screenprinting and editorial graphics.
 - **4-Tone & 8-Tone Tonal Plates:** Progressive density plates calibrated via Tone Match Index (TMI).
 - **Inverted Plates:** Negative print suites optimized for dark apparel printing and laser engraving.
-- **Bridge-Connected Cut Stencils:** Structural bridges preventing "island fallout" during physical cutting.
+- **Clean Cut Stencils:** Unblemished single-path silhouette stencil plates for plotters and laser cutters.
 
 ### 4. 📄 Master Scalable Vector PDF Suite & Dynamic Naming
 - In-browser compilation using `jsPDF` and `svg2pdf.js`.
-- Exports an Executive Cover Page plus all 12 vector plates into a single **13-page master PDF document** (`<source>_<mode>_master_suite_c2vector_DV.pdf`), with consistent dynamic filenames for individual SVGs and scaled PNGs (`@1x`, `@2x`, `@4x`).
+- Exports an Executive Cover Page plus all vector artboards into a single **14-page master PDF document** (`<source>_<mode>_master_suite_c2vector_DV.pdf`), with consistent dynamic filenames for individual SVGs and scaled PNGs (`@1x`, `@2x`, `@4x`).
 - **100% Pure Vector Bézier Streams:** Infinite print scalability with strictly **0 raster compression artifacts**.
 
 ### 5. 🔍 Interactive 360° Native ViewBox Pan & Zoom Workbench
 - **Crisp Native ViewBox Zoom (1x–8x):** Hardware-smooth pan, touch-drag, wheel zoom, soft boundary clamping, and dedicated **Center** control that preserves active magnification without GPU raster blur.
-- **13 Specialized Artboards:** Rapid switching between Vibrant v2, Faithful Master, 8-Tone Color, Pixel Match, 1-Bit Mono, 2-Tone Duotone, 4-Tone/8-Tone Positive & Negative Plates, Bridge Stencil, Canny Hairline Edges, and Chromatic Contours with **strictly 0.00px Layout Shift (CLS)**.
+- **14 Specialized Artboards (4 Normalized Domains):** Organized cleanly into **Master** (Vibrant v2, Faithful, Canva Ready, Planar), **Screenprint** (Spot Color), **Tonal Studies** (1-Bit Mono, 2-Tone, 4T/8T Pos & Neg), and **Fabrication** (Cut Stencil, Hairline, Contours) with **strictly 0.00px Layout Shift (CLS)**.
 - **Dynamic Swatch Palette:** Real-time hex color swatches with one-click clipboard copying and toast feedback.
 
-### 6. 📱 Progressive Web App (PWA) & Offline Capability
-- Caches all runtime assets via Service Worker (`sw.js`).
+### 6. 📱 Progressive Web App (PWA) & Build-Stamped Offline Cache
+- **Network-First HTML + Build-Stamped Cache (`sw.js`):** Navigation requests use Network-First while content-hashed JS/CSS bundles use Cache-First, with automatic old-cache purging and stale cookie/session cleanup on new version rollouts.
 - Installable as a standalone app on macOS, Windows, Linux, Android, and iOS.
 - Multi-aspect ratio OpenGraph card suite (<100KB) and Google Search Central multiple-of-48px favicons.
 
@@ -114,7 +117,7 @@ c2vector/
 ├── public/                      # Static unbundled assets copied directly to dist/
 │   ├── favicon.ico              # Standard root favicon
 │   ├── manifest.webmanifest     # Progressive Web App manifest
-│   ├── sw.js                    # Offline Service Worker cache (c2vector-v12)
+│   ├── sw.js                    # Build-stamped Network-First/Cache-First Service Worker
 │   ├── robots.txt               # Search crawler directives
 │   ├── sitemap.xml              # Canonical clean XML sitemap
 │   ├── .nojekyll                # GitHub Pages static asset bypass
@@ -143,7 +146,7 @@ c2vector/
 │   │   │   ├── tonal-studies.js # Otsu 1-bit, exact alpha mask, stencil & dual-pass line art
 │   │   │   └── worker.js        # Background Web Worker sandbox
 │   │   └── export/
-│   │       ├── pdf-builder.js   # 13-page pure vector PDF suite compiler
+│   │       ├── pdf-builder.js   # 14-page pure vector PDF suite compiler
 │   │       └── png-exporter.js  # OffscreenCanvas 1x/2x/4x PNG raster exporter
 │   └── vendor/                  # Bundled engine vendor modules
 ├── index.html                   # Primary Studio Workbench application

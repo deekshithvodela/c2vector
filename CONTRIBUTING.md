@@ -57,7 +57,7 @@ All pull requests must adhere to our zero-diagnostic quality policy:
 
 ## 🧪 Testing & Verification
 
-Before submitting a PR, verify that both the production build and the consolidated automated verification suite (41 composite checks covering 7-vector privacy/security, responsive layouts, Photo & Logo engines, 13 artboards, SVG 1.1 conformance, transparency coverage, and line-art glyph parity) pass with zero failures:
+Before submitting a PR, verify that both the production build and the consolidated automated verification suite (41 composite checks covering 7-vector privacy/security, responsive layouts, Logo & Photo engines, 14 artboards including `canvaOptimized`, SVG 1.1 conformance, alpha-only transparency coverage, and line-art glyph parity) pass with zero failures:
 
 ```bash
 # Verify clean production build:

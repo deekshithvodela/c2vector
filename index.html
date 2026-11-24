@@ -19,7 +19,8 @@
   <script>
     (function() {
       try {
-        const savedTheme = localStorage.getItem('c2vector-theme') || 'dark';
+        const rawTheme = localStorage.getItem('c2vector-theme');
+        const savedTheme = rawTheme === 'light' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', savedTheme);
         if (savedTheme === 'dark') {
           document.documentElement.classList.add('dark');
@@ -199,15 +200,15 @@
 
     <!-- Upload Card -->
     <section class="upload-card" id="dropzone" role="region" aria-label="Photo upload and file drag-and-drop area" tabindex="0">
-      <!-- Engine Mode Selector Tabs -->
+      <!-- Engine Mode Selector Tabs (Logo & Typography first & default) -->
       <div class="engine-mode-tabs" role="tablist" aria-label="Vectorization Engine Mode">
-        <button type="button" class="mode-tab active" id="tabModePhoto" role="tab" aria-selected="true" data-mode="photo">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-          <span>Photo / Decal Mode</span>
-        </button>
-        <button type="button" class="mode-tab" id="tabModeLogo" role="tab" aria-selected="false" data-mode="logo">
+        <button type="button" class="mode-tab active" id="tabModeLogo" role="tab" aria-selected="true" data-mode="logo">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>
           <span>Logo &amp; Typography Mode</span>
+        </button>
+        <button type="button" class="mode-tab" id="tabModePhoto" role="tab" aria-selected="false" data-mode="photo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+          <span>Photo / Decal Mode</span>
         </button>
       </div>
 
@@ -218,15 +219,15 @@
           <line x1="12" y1="3" x2="12" y2="15"></line>
         </svg>
       </div>
-      <h2 class="upload-title" id="uploadTitle">Drop your image here or browse</h2>
-      <p class="upload-subtitle" id="uploadSubtitle">Supports PNG, JPEG, WebP, AVIF • Auto-resampling, Canny edge detection &amp; continuous Bézier curve fitting</p>
+      <h2 class="upload-title" id="uploadTitle">Drop your logo or graphic here or browse</h2>
+      <p class="upload-subtitle" id="uploadSubtitle">Supports PNG, SVG, WebP, JPEG • Auto spot-color quantization, sharp 90° corner snapping &amp; typography preservation</p>
       
       <div class="upload-controls">
         <input type="file" id="fileInput" accept="image/*" style="display:none;" aria-label="Upload photo file">
         <input type="file" id="logoFileInput" accept="image/*" style="display:none;" aria-label="Upload logo or graphic file">
 
         <!-- Photo Mode Buttons -->
-        <button id="btnBrowse" class="btn btn-primary" type="button">
+        <button id="btnBrowse" class="btn btn-primary" type="button" style="display:none;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <circle cx="8.5" cy="8.5" r="1.5"></circle>
@@ -236,7 +237,7 @@
         </button>
 
         <!-- Logo Mode Button -->
-        <button id="btnBrowseLogo" class="btn btn-primary" type="button" style="display:none;">
+        <button id="btnBrowseLogo" class="btn btn-primary" type="button" style="display:inline-flex;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
             <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
@@ -246,14 +247,14 @@
           <span>Upload Logo / Graphic</span>
         </button>
 
-        <button id="btnSample" class="btn btn-secondary" type="button">
+        <button id="btnSample" class="btn btn-secondary" type="button" style="display:none;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
           </svg>
           <span>Try Sample Photo</span>
         </button>
 
-        <button id="btnSampleLogo" class="btn btn-secondary" type="button" style="display:none;">
+        <button id="btnSampleLogo" class="btn btn-secondary" type="button" style="display:inline-flex;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
           </svg>
@@ -338,21 +339,41 @@
             </div>
           </div>
 
-          <!-- Concise Artboard Tab Navigation Placed Right Below File Name & Toolbar -->
+          <!-- Normalized Artboard Navigation: 4 Curated Functional Domains -->
           <nav class="tab-nav" id="tabNav" role="tablist" aria-label="Vector Artboard Selection">
-            <button type="button" class="tab-btn active" data-artboard="masterVibrant" role="tab" aria-selected="true" title="Master Vibrant Vector v2 — Calibrated with Tone Match Index">Vibrant v2</button>
-            <button type="button" class="tab-btn" data-artboard="masterFaithful" role="tab" aria-selected="false" title="Master Faithful Vector — Authentic 64 Tiers Source Match">Faithful</button>
-            <button type="button" class="tab-btn" data-artboard="posterizeColor" role="tab" aria-selected="false" title="Color Posterize Print Plate (8-Tone) — Bold Chromatic Planes">8-Tone Color</button>
-            <button type="button" class="tab-btn" data-artboard="pixelMatch" role="tab" aria-selected="false" title="Seamless Pixel-Match Vector (Anti-Grid HD) — Zero Grid Lines">Pixel Match</button>
-            <button type="button" class="tab-btn" data-artboard="monochrome" role="tab" aria-selected="false" title="1-Bit Otsu Monochrome Stencil — Solid B&amp;W Mask">1-Bit Mono</button>
-            <button type="button" class="tab-btn" data-artboard="twoTone" role="tab" aria-selected="false" title="2-Tone Duotone Print Plate — Key &amp; Midtone Inks">2-Tone</button>
-            <button type="button" class="tab-btn" data-artboard="posterize4" role="tab" aria-selected="false" title="4-Tone Posterize Print Plate (Positive) — Quantized Grayscale">4-Tone</button>
-            <button type="button" class="tab-btn" data-artboard="posterize4Inverted" role="tab" aria-selected="false" title="4-Tone Negative Plate (Inverted) — For Dark Apparel &amp; Laser">4-Tone Neg</button>
-            <button type="button" class="tab-btn" data-artboard="posterize8" role="tab" aria-selected="false" title="8-Tone Posterize Print Plate (Positive) — Graduated Grayscale">8-Tone</button>
-            <button type="button" class="tab-btn" data-artboard="posterize8Inverted" role="tab" aria-selected="false" title="8-Tone Negative Plate (Inverted) — Discharge Ink Plate">8-Tone Neg</button>
-            <button type="button" class="tab-btn" data-artboard="stencil" role="tab" aria-selected="false" title="Bridge-Connected Cut Stencil — Island-Bridged Laser Paths">Stencil</button>
-            <button type="button" class="tab-btn" data-artboard="cannyEdges" role="tab" aria-selected="false" title="Canny Sub-Pixel Hairline Edges — 1-px Ridge Outlines">Canny Edges</button>
-            <button type="button" class="tab-btn" data-artboard="chromaticEdges" role="tab" aria-selected="false" title="Translucent Chromatic Contours — 70%-80% Opacity Glaze">Contours</button>
+            <!-- 1. Master Vector Studio -->
+            <div class="tab-group" data-domain="master" title="Master Resolution-Independent Vectors">
+              <span class="tab-group-label">Master</span>
+              <button type="button" class="tab-btn active" data-artboard="masterVibrant" role="tab" aria-selected="true" title="Master Vibrant Vector v2 — Calibrated with Tone Match Index">Vibrant v2</button>
+              <button type="button" class="tab-btn" data-artboard="masterFaithful" role="tab" aria-selected="false" title="Master Faithful Vector — Authentic 64 Tiers Source Match">Faithful</button>
+              <button type="button" class="tab-btn" data-artboard="canvaOptimized" role="tab" aria-selected="false" title="Canva-Optimized Master SVG (≤4 Editable Solid Colors)">Canva Ready</button>
+              <button type="button" class="tab-btn" data-artboard="pixelMatch" role="tab" aria-selected="false" title="Seamless Pixel-Match Vector (Anti-Grid HD) — Zero Grid Lines">Planar</button>
+            </div>
+
+            <!-- 2. Screenprint Separation -->
+            <div class="tab-group" data-domain="screenprint" title="Spot-Color Screenprint & Embroidery Separations">
+              <span class="tab-group-label">Screenprint</span>
+              <button type="button" class="tab-btn" data-artboard="posterizeColor" role="tab" aria-selected="false" title="Color Posterize Print Plate (8-Tone) — Bold Chromatic Planes">Spot Color</button>
+            </div>
+
+            <!-- 3. Tonal & Print Studies -->
+            <div class="tab-group" data-domain="tonal" title="Grayscale, Duotone & Monochrome Apparel Print Plates">
+              <span class="tab-group-label">Tonal Studies</span>
+              <button type="button" class="tab-btn" data-artboard="twoTone" role="tab" aria-selected="false" title="2-Tone Duotone Print Plate — Key &amp; Midtone Inks">2-Tone</button>
+              <button type="button" class="tab-btn" data-artboard="monochrome" role="tab" aria-selected="false" title="1-Bit Otsu Monochrome Stencil — Solid B&amp;W Mask">1-Bit Mono</button>
+              <button type="button" class="tab-btn" data-artboard="posterize4" role="tab" aria-selected="false" title="4-Tone Posterize Print Plate (Positive) — Quantized Grayscale">4-Tone</button>
+              <button type="button" class="tab-btn" data-artboard="posterize4Inverted" role="tab" aria-selected="false" title="4-Tone Negative Plate (Inverted) — For Dark Apparel &amp; Laser">4-Tone Neg</button>
+              <button type="button" class="tab-btn" data-artboard="posterize8" role="tab" aria-selected="false" title="8-Tone Posterize Print Plate (Positive) — Graduated Grayscale">8-Tone</button>
+              <button type="button" class="tab-btn" data-artboard="posterize8Inverted" role="tab" aria-selected="false" title="8-Tone Negative Plate (Inverted) — Discharge Ink Plate">8-Tone Neg</button>
+            </div>
+
+            <!-- 4. Fabrication & Plotter Paths -->
+            <div class="tab-group" data-domain="fabrication" title="CNC, Laser Cutters & Vinyl Plotter Toolpaths">
+              <span class="tab-group-label">Fabrication</span>
+              <button type="button" class="tab-btn" data-artboard="stencil" role="tab" aria-selected="false" title="Clean Cut Stencil — Island-Bridged Solid Vector Paths">Cut Stencil</button>
+              <button type="button" class="tab-btn" data-artboard="cannyEdges" role="tab" aria-selected="false" title="Canny Sub-Pixel Hairline Edges — 1-px Ridge Outlines">Wireframe</button>
+              <button type="button" class="tab-btn" data-artboard="chromaticEdges" role="tab" aria-selected="false" title="Translucent Chromatic Contours — 70%-80% Opacity Glaze">Die-Cut</button>
+            </div>
           </nav>
 
           <div class="viewport-canvas" id="viewport" tabindex="0" role="region" aria-label="Scalable vector artboard canvas">
@@ -421,6 +442,64 @@
             </p>
             <div class="palette-swatches-grid" id="workbenchPaletteSwatches" aria-label="Synthesized Color Palette Swatches">
               <!-- Swatches populated dynamically -->
+            </div>
+          </div>
+
+          <!-- 2b. Flagship Vector Pro Studio: Real-Time Vector Layer, Stroke & Color Quantization Editor -->
+          <div class="palette-card pro-studio-card" id="logoProStudioCard" aria-label="Vector Pro Studio Real-Time Layer Editor">
+            <div class="panel-section-title">
+              <span style="display:flex; align-items:center; gap:0.4rem;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                  <polyline points="2 17 12 22 22 17"></polyline>
+                  <polyline points="2 12 12 17 22 12"></polyline>
+                </svg>
+                Vector Pro Studio
+              </span>
+              <span class="badge" id="proStudioModeBadge" style="background:var(--accent-gold-subtle); color:var(--accent-gold); border:1px solid rgba(244,186,0,0.3);">Live Editor</span>
+            </div>
+
+            <!-- Spot Color / Tier Budget Slider, Presets & Explicit Submit -->
+            <div class="studio-tool-group">
+              <div class="studio-tool-header">
+                <label for="colorBudgetSlider" class="studio-label" id="colorBudgetLabel">Spot Color Budget</label>
+                <div style="display:flex; align-items:center; gap:0.4rem;">
+                  <span id="colorBudgetVal" class="studio-val-badge">8 Inks</span>
+                  <button type="button" id="btnApplyColorBudget" class="btn-micro btn-apply-budget" title="Apply selected color/tier budget and re-vectorize">Apply</button>
+                </div>
+              </div>
+              <div class="studio-preset-chips" role="group" aria-label="Quick color budget presets">
+                <button type="button" class="preset-chip" data-colors="2" title="2-Color Duotone / Vinyl Decal">2</button>
+                <button type="button" class="preset-chip" data-colors="3" title="3-Color Brand Logo">3</button>
+                <button type="button" class="preset-chip" data-colors="4" title="4-Color Process Spot">4</button>
+                <button type="button" class="preset-chip active" data-colors="8" title="8-Color Screenprint Separation">8</button>
+                <button type="button" class="preset-chip" data-colors="16" title="16-Color Rich Palette">16</button>
+                <button type="button" class="preset-chip" data-colors="32" title="32-Color Max HD">32</button>
+              </div>
+              <input type="range" id="colorBudgetSlider" class="studio-slider" min="2" max="48" value="8" step="1" aria-label="Adjust color or tier budget">
+            </div>
+
+            <!-- Stroke Weight & Kerf Compensator -->
+            <div class="studio-tool-group">
+              <div class="studio-tool-header">
+                <label for="strokeWeightSlider" class="studio-label">Stroke Weight / Kerf</label>
+                <div style="display:flex; align-items:center; gap:0.4rem;">
+                  <span id="strokeWeightVal" class="studio-val-badge">0.0 px</span>
+                  <button type="button" id="btnResetStroke" class="btn-micro" title="Reset stroke weight to 0px">↺</button>
+                </div>
+              </div>
+              <input type="range" id="strokeWeightSlider" class="studio-slider" min="0" max="8" value="0" step="0.5" aria-label="Adjust stroke weight and kerf bleed">
+            </div>
+
+            <!-- Active Vector Layers Tree -->
+            <div class="studio-tool-group" style="margin-bottom:0;">
+              <div class="studio-tool-header">
+                <span class="studio-label">Active Vector Layers</span>
+                <button type="button" id="btnResetLayers" class="btn-micro" title="Reset all layer recoloring &amp; visibility">↺ Reset</button>
+              </div>
+              <div class="studio-layers-tree" id="studioLayersList" role="list" aria-label="Vector SVG layers list">
+                <!-- Dynamically generated layer items -->
+              </div>
             </div>
           </div>
 

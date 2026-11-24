@@ -6,8 +6,8 @@
 
 import { resampleBicubic, bilateralDenoise, computeLuminance, rgbToHsv, hsvToRgb, computeCannyEdges } from './image-ops.js';
 import { computeOtsuThreshold, generateMonochromeMap, generateBridgeStencilMap, generateExactAlphaMask } from './tonal-studies.js';
-import { quantizePalette, mapPixelsToPaletteIndex, computeToneMatchIndex, rgbToHex } from './quantizer.js';
-import { buildMasterSvg, buildStudySvg, buildMultiToneStudySvg, buildColorPosterizeSvg, buildSeamlessPixelMatchSvg } from './bezier-tracer.js';
+import { quantizePalette, consolidatePalette, selectCanvaPalette, mapPixelsToPaletteIndex, mapPixelsToPaletteLab, despeckleTierMap, computeToneMatchIndex, rgbToHex } from './quantizer.js';
+import { buildMasterSvg, buildStudySvg, buildMultiToneStudySvg, buildColorPosterizeSvg, buildSeamlessPixelMatchSvg, buildCanvaOptimizedSvg } from './bezier-tracer.js';
 import { traceMaskToPathD } from './potrace.js';
 
 export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, options = {}, progressCallback = () => {}) {
@@ -92,7 +92,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   progressCallback({ step: 2, name: 'Monochrome, Posterize & Stencil Studies', pct: 35 });
   const otsuThreshold = computeOtsuThreshold(cleanPixels, targetHDWidth, targetHDHeight);
   const monoMap = generateMonochromeMap(cleanPixels, targetHDWidth, targetHDHeight, otsuThreshold);
-  const stencilMap = generateBridgeStencilMap(monoMap, targetHDWidth, targetHDHeight, 3, 48);
+  const stencilMap = generateBridgeStencilMap(monoMap, targetHDWidth, targetHDHeight, 0, 0);
 
   // Compute 4-Tone Grayscale Masks: #000000 (base), #4a4a4a, #a8a8a8, #ffffff (ignoring transparent pixels)
   const p4Colors = ['#000000', '#4a4a4a', '#a8a8a8', '#ffffff'];
@@ -211,7 +211,10 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   // STEP 4: COLOR QUANTIZATION & TONE MATCH INDEX
   progressCallback({ step: 4, name: 'Color Quantization & Tone Match Index', pct: 75 });
   const effectiveTiers = isAchromaticArt ? Math.min(targetTiers, 8) : targetTiers;
-  const palette = quantizePalette(cleanPixels, effectiveTiers);
+  const rawPalette = quantizePalette(cleanPixels, effectiveTiers);
+  const palette = effectiveTiers > 8
+    ? consolidatePalette(rawPalette, { minDeltaE: 5.5, minAreaRatio: 0.0015 })
+    : rawPalette;
   const tierIndices = mapPixelsToPaletteIndex(cleanPixels, palette);
 
   const tierMasks = [];
@@ -459,11 +462,57 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   const masterVibrantSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, defaultSubstrate, null, masterOpts);
   const masterVibrantTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, null, silhouettePathD, masterOpts);
 
+  // Canva-Optimized Master SVG (<=5 focal solid colors, CIELAB mapped, 3x3 despeckled, zero translucent glazes)
+  const canvaMax = Math.min(effectiveTiers, 4);
+  const canvaCandidates = quantizePalette(cleanPixels, Math.max(canvaMax, 24), 0);
+  const canvaPalette = selectCanvaPalette(canvaCandidates, canvaMax);
+  const canvaIndices = despeckleTierMap(mapPixelsToPaletteLab(cleanPixels, canvaPalette), targetHDWidth, targetHDHeight);
+  const canvaLayers = [];
+  for (let t = 0; t < canvaPalette.length; t++) {
+    const rawCanvaMask = new Uint8Array(targetHDWidth * targetHDHeight);
+    for (let i = 0; i < canvaIndices.length; i++) {
+      if (cleanPixels[i * 4 + 3] >= 32 && canvaIndices[i] === t) rawCanvaMask[i] = 1;
+    }
+    // 1px alpha-bounded trapping for dark/chromatic layers only (never dilate highlight white over thin eyes/stripes)
+    const isLightestHighlight = t === canvaPalette.length - 1 && canvaPalette[t].L > 82;
+    const trappedCanvaMask = new Uint8Array(rawCanvaMask);
+    if (!isLightestHighlight) {
+      for (let y = 1; y < targetHDHeight - 1; y++) {
+        const yOff = y * targetHDWidth;
+        for (let x = 1; x < targetHDWidth - 1; x++) {
+          const idx = yOff + x;
+          if (rawCanvaMask[idx] === 0 && (!isTransparent || (exactAlphaMask && exactAlphaMask[idx] === 1))) {
+            if (
+              rawCanvaMask[idx - 1] === 1 || rawCanvaMask[idx + 1] === 1 ||
+              rawCanvaMask[idx - targetHDWidth] === 1 || rawCanvaMask[idx + targetHDWidth] === 1
+            ) {
+              trappedCanvaMask[idx] = 1;
+            }
+          }
+        }
+      }
+    }
+    canvaLayers.push({
+      color: canvaPalette[t].hex,
+      mask: trappedCanvaMask,
+      areaCount: canvaPalette[t].count || 0,
+      turdSize: isLightestHighlight ? 4 : 1,
+      optTolerance: 0.25,
+      alphaMax: isAchromaticArt ? 0.72 : 0.55
+    });
+  }
+  // Sort Canva layers by descending pixel area so large backgrounds/fur sit beneath small vivid accents (eyes/mouth)
+  canvaLayers.sort((a, b) => (b.areaCount || 0) - (a.areaCount || 0));
+  const canvaBaseSubstrate = canvaLayers[0] ? canvaLayers[0].color : defaultSubstrate;
+  const canvaOptimizedSolidSvg = buildCanvaOptimizedSvg(targetHDWidth, targetHDHeight, canvaLayers, canvaBaseSubstrate, null);
+  const canvaOptimizedTransparentSvg = buildCanvaOptimizedSvg(targetHDWidth, targetHDHeight, canvaLayers, null, silhouettePathD);
+
   progressCallback({ step: 6, name: 'Complete', pct: 100 });
 
   const solidSvgs = {
     masterVibrant: masterVibrantSolidSvg,
     masterFaithful: masterFaithfulSolidSvg,
+    canvaOptimized: canvaOptimizedSolidSvg,
     posterizeColor: posterColorSolidSvg,
     pixelMatch: pixelMatchSolidSvg,
     monochrome: monoSolidSvg,
@@ -480,6 +529,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   const transparentSvgs = {
     masterVibrant: masterVibrantTransparentSvg,
     masterFaithful: masterFaithfulTransparentSvg,
+    canvaOptimized: canvaOptimizedTransparentSvg,
     posterizeColor: posterColorTransparentSvg,
     pixelMatch: pixelMatchTransparentSvg,
     monochrome: monoTransparentSvg,
@@ -497,6 +547,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
 
   return {
     mode: 'photo',
+    options: { ...options, tiers: targetTiers, maxColors: targetTiers },
     dimensions: { width: targetHDWidth, height: targetHDHeight },
     rawDimensions: { width: rawWidth, height: rawHeight },
     tiers: palette.length,

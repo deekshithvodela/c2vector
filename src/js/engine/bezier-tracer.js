@@ -6,6 +6,35 @@
 
 import { traceMaskToPathD } from './potrace.js';
 
+// Per-mask WeakMap cache eliminates redundant 2x-4x Potrace calls across solid/transparent & faithful/vibrant plates
+const maskTraceCache = new WeakMap();
+
+export function compactSvgPathD(pathD) {
+  if (!pathD || typeof pathD !== 'string') return '';
+  return pathD
+    .trim()
+    .replace(/,\s*/g, ' ')
+    .replace(/\s*([CLZ])\s*/g, '$1')
+    .replace(/\s*M\s*/g, ' M ')
+    .replace(/^ M /, 'M ')
+    .replace(/\s{2,}/g, ' ');
+}
+
+function cachedTraceMask(mask, width, height, opts) {
+  let byOpts = maskTraceCache.get(mask);
+  if (!byOpts) {
+    byOpts = new Map();
+    maskTraceCache.set(mask, byOpts);
+  }
+  const key = `${width}x${height}:${opts.turdSize}:${opts.optTolerance}:${opts.alphaMax}:${opts.turnPolicy}`;
+  if (byOpts.has(key)) {
+    return byOpts.get(key);
+  }
+  const traced = compactSvgPathD(traceMaskToPathD(mask, width, height, opts));
+  byOpts.set(key, traced);
+  return traced;
+}
+
 /**
  * Builds Full Master Vector SVG string with continuous Bézier tiers and translucent chromatic contours
  * Universal Continuous Discrete Vector Tier Production Print Specifications
@@ -35,7 +64,7 @@ export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges
       ? options.tierTurdSize(t)
       : (options.turdSize !== undefined ? options.turdSize : 3);
 
-    const pathD = traceMaskToPathD(mask, width, height, {
+    const pathD = cachedTraceMask(mask, width, height, {
       optCurve: true,
       turdSize: tierTurd,
       optTolerance: options.optTolerance !== undefined ? options.optTolerance : 0.22,
@@ -70,10 +99,11 @@ export function buildMasterSvg(width, height, palette, tierMasks, chromaticEdges
  */
 export function buildStudySvg(width, height, fillHex, bgHex, mask, options = {}, silhouettePathD = null) {
   const turdSize = options.turdSize !== undefined ? options.turdSize : 3;
-  const pathD = traceMaskToPathD(mask, width, height, {
+  const pathD = cachedTraceMask(mask, width, height, {
     optCurve: true,
     turdSize,
     optTolerance: 0.20,
+    alphaMax: options.alphaMax !== undefined ? options.alphaMax : 1.0,
     turnPolicy: 'minority'
   });
 
@@ -106,7 +136,7 @@ export function buildMultiToneStudySvg(width, height, layers, bgHex = null, silh
   body += '  <g id="tonal-study-layers">\n';
   for (const layer of layers) {
     if (!layer.mask) continue;
-    const pathD = traceMaskToPathD(layer.mask, width, height, {
+    const pathD = cachedTraceMask(layer.mask, width, height, {
       optCurve: true,
       turdSize: layer.turdSize !== undefined ? layer.turdSize : 3,
       optTolerance: layer.optTolerance !== undefined ? layer.optTolerance : 0.20,
@@ -139,7 +169,7 @@ export function buildColorPosterizeSvg(width, height, layers, bgHex = null, silh
   body += '  <g id="color-posterize-planes">\n';
   for (const layer of layers) {
     if (!layer.mask) continue;
-    const pathD = traceMaskToPathD(layer.mask, width, height, {
+    const pathD = cachedTraceMask(layer.mask, width, height, {
       optCurve: true,
       turdSize: layer.turdSize !== undefined ? layer.turdSize : 4,
       optTolerance: layer.optTolerance !== undefined ? layer.optTolerance : 0.25,
@@ -177,15 +207,55 @@ export function buildSeamlessPixelMatchSvg(width, height, layers, bgHex = null, 
   body += '  <g id="seamless-pixel-match-planes">\n';
   for (const layer of layers) {
     if (!layer.mask) continue;
-    const pathD = traceMaskToPathD(layer.mask, width, height, {
+    const pathD = cachedTraceMask(layer.mask, width, height, {
       optCurve: true,
       turdSize: 3,
       optTolerance: 0.18,
+      alphaMax: 1.0,
       turnPolicy: 'minority'
     });
     if (pathD && pathD.trim().length > 0) {
       body += `    <!-- ${layer.name || 'Pixel Zone'} -->\n`;
       body += `    <path id="${layer.id || 'zone'}" fill="${layer.color}" fill-rule="evenodd" d="${pathD}"/>\n`;
+    }
+  }
+  body += '  </g>\n';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n${body}</svg>`;
+}
+
+/**
+ * Builds a Canva-Optimized Master SVG 1.1 document:
+ * - <= 5 focal solid opaque colors (unlocks Canva's inline color palette editor)
+ * - Zero translucent groups (no opacity < 1) and zero inline CSS style attributes
+ * - Single hole-safe compound <path fill-rule="evenodd"> per color
+ */
+export function buildCanvaOptimizedSvg(width, height, layers, bgHex = null, silhouettePathD = null) {
+  let body = '';
+  if (bgHex) {
+    body += `  <rect width="${width}" height="${height}" fill="${bgHex}"/>\n`;
+  } else if (silhouettePathD) {
+    const baseColor = layers[0] ? layers[0].color : '#000000';
+    body += `  <path fill="${baseColor}" fill-rule="evenodd" d="${compactSvgPathD(silhouettePathD)}"/>\n`;
+  }
+
+  body += '  <!-- Canva-Optimized Solid Vector Layers (<=5 Editable Solid Colors, Hole-Safe EvenOdd) -->\n';
+  body += '  <g id="canva-optimized-paths">\n';
+  for (const layer of layers) {
+    let pathD = layer.d || '';
+    if (!pathD && layer.mask) {
+      pathD = cachedTraceMask(layer.mask, width, height, {
+        optCurve: true,
+        turdSize: layer.turdSize !== undefined ? layer.turdSize : 4,
+        optTolerance: layer.optTolerance !== undefined ? layer.optTolerance : 0.25,
+        alphaMax: layer.alphaMax !== undefined ? layer.alphaMax : 0.55,
+        turnPolicy: 'minority'
+      });
+    } else if (pathD) {
+      pathD = compactSvgPathD(pathD);
+    }
+    if (pathD && pathD.trim().length > 0) {
+      // Keep each color in a single compound <path> so fill-rule="evenodd" never separates inner holes from outer contours
+      body += `    <path fill="${layer.color}" fill-rule="evenodd" d="${pathD}"/>\n`;
     }
   }
   body += '  </g>\n';

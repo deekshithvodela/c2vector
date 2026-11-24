@@ -8,10 +8,11 @@
  * - 1-click transparent background knockout
  */
 
+import { buildCanvaOptimizedSvg, compactSvgPathD } from './bezier-tracer.js';
 import { traceMaskToPathD, traceMaskToSubpaths } from './potrace.js';
 import { rgbToHsv, hsvToRgb, computeLuminance } from './image-ops.js';
-import { computeOtsuThreshold, generateBridgeStencilMap, generateExactAlphaMask, generateOptimizedLineArtMask } from './tonal-studies.js';
-import { rgbToLab, deltaE, hexToRgb, rgbToHex } from './quantizer.js';
+import { computeOtsuThreshold, generateBridgeStencilMap, generateExactAlphaMask, generateOptimizedLineArtMask, detectGlyphMask, smoothGlyphStaircases } from './tonal-studies.js';
+import { rgbToLab, deltaE, hexToRgb, rgbToHex, selectCanvaPalette, despeckleTierMap } from './quantizer.js';
 
 /**
  * Scales Potrace SVG path coordinate numbers by a given factor (e.g. 0.5 for 2x sub-pixel canvas).
@@ -177,6 +178,44 @@ export function detectSpotColors(pixels, width, height, maxColors = 32) {
       spotColors.length = 0;
       spotColors.push(...remaining);
     }
+  } else if (!isAllAchromatic && spotColors.length > 1) {
+    // Chromatic Edge Unification:
+    // Anti-aliased transition pixels between high-contrast chromatic regions (e.g. Navy background vs Gold typography)
+    // create tiny micro-clusters (< 0.12% total area) with intermediate Delta E.
+    // Merge small edge falloff clusters (count < 0.12% total area) into their closest dominant chromatic neighbor
+    // if Delta E < 18, preventing fracture into thousands of 1-2px subpaths.
+    const fringeThreshold = Math.max(16, Math.round(totalPixels * 0.0012));
+    const mergedSpotColors = [];
+    const ranked = [...spotColors].sort((a, b) => b.count - a.count);
+    for (const sc of ranked) {
+      if (sc.count < fringeThreshold && mergedSpotColors.length > 0) {
+        let bestTarget = null;
+        let bestDist = Infinity;
+        for (const target of mergedSpotColors) {
+          const d = deltaE(sc.lab, target.lab);
+          if (d < 18 && d < bestDist) {
+            bestDist = d;
+            bestTarget = target;
+          }
+        }
+        if (bestTarget) {
+          const total = bestTarget.count + sc.count;
+          bestTarget.rSum += sc.rSum;
+          bestTarget.gSum += sc.gSum;
+          bestTarget.bSum += sc.bSum;
+          bestTarget.count = total;
+          bestTarget.r = Math.min(255, Math.max(0, Math.round(bestTarget.rSum / total)));
+          bestTarget.g = Math.min(255, Math.max(0, Math.round(bestTarget.gSum / total)));
+          bestTarget.b = Math.min(255, Math.max(0, Math.round(bestTarget.bSum / total)));
+          bestTarget.lab = rgbToLab(bestTarget.r, bestTarget.g, bestTarget.b);
+          bestTarget.hex = rgbToHex(bestTarget.r, bestTarget.g, bestTarget.b);
+          continue;
+        }
+      }
+      mergedSpotColors.push(sc);
+    }
+    spotColors.length = 0;
+    spotColors.push(...mergedSpotColors);
   }
 
   // Sort spot colors by perceived luminance (darkest to lightest for optimal vector layer stacking)
@@ -339,46 +378,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
 
   // 2D Spatial Regularization (Majority Despeckle Filter)
   // Prunes 1-pixel boundary noise, anti-aliased staircases, and isolated specks without rounding 90° corners
-  const pixelTierMap = new Int16Array(totalPixels);
-  pixelTierMap.set(rawTierMap);
-
-  for (let y = 1; y < rawHeight - 1; y++) {
-    const rowOffset = y * rawWidth;
-    for (let x = 1; x < rawWidth - 1; x++) {
-      const idx = rowOffset + x;
-      const currentTier = rawTierMap[idx];
-      if (currentTier < 0) continue;
-
-      let sameCount = 0;
-      let dominantNeighborTier = -1;
-      let maxNeighborCount = 0;
-      const neighborCounts = new Int16Array(spotColors.length);
-
-      for (let dy = -1; dy <= 1; dy++) {
-        const nRow = (y + dy) * rawWidth;
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const nTier = rawTierMap[nRow + x + dx];
-          if (nTier < 0) continue;
-          if (nTier === currentTier) {
-            sameCount++;
-          } else {
-            neighborCounts[nTier]++;
-            if (neighborCounts[nTier] > maxNeighborCount) {
-              maxNeighborCount = neighborCounts[nTier];
-              dominantNeighborTier = nTier;
-            }
-          }
-        }
-      }
-
-      // If current pixel is an isolated anti-aliasing speck or 1-pixel fringe ripple (<=1 same neighbors)
-      // while surrounding area has >=5 dominant neighbors: snap to the dominant neighbor
-      if (sameCount <= 1 && maxNeighborCount >= 5 && dominantNeighborTier >= 0) {
-        pixelTierMap[idx] = dominantNeighborTier;
-      }
-    }
-  }
+  const pixelTierMap = despeckleTierMap(rawTierMap, rawWidth, rawHeight, true);
 
   progressCallback({ step: 3, name: 'Corner-Preserving Bézier Curve Fitting (alphaMax: 0.15)', pct: 70 });
 
@@ -509,33 +509,79 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
 
       pathD = scalePathData(rawSubD, 0.5);
     } else {
-      // Standard Geometric Logo Vectorization (sharp typography & 90° corporate brand corners)
+      // Standard Geometric Logo Vectorization (sharp typography & corporate brand curves)
       const trappedMask = new Uint8Array(rawMask);
-      const shouldTrap = isTransparentLogo && exactAlphaMask && spotColors.length > 1 && !isAchromaticArt;
-      if (shouldTrap) {
+      const isBgColor = col.hex.toLowerCase() === bgHex.toLowerCase();
+
+      // Prepress Color Trapping:
+      // Eliminates sub-pixel white seams/fringes between adjacent vector plates.
+      // - Transparent artwork: traps within exactAlphaMask.
+      // - Opaque artwork: traps within foreground artwork envelope (all non-bgHex pixels).
+      // Background canvas plate never traps into foreground; foreground plates dilate 1px into neighbors.
+      const shouldTrap = spotColors.length > 1 && !isAchromaticArt;
+      if (shouldTrap && !isBgColor) {
+        const validTrapArea = isTransparentLogo ? exactAlphaMask : null;
         for (let y = 1; y < rawHeight - 1; y++) {
           const yOff = y * rawWidth;
           for (let x = 1; x < rawWidth - 1; x++) {
             const idx = yOff + x;
-            if (rawMask[idx] === 0 && exactAlphaMask[idx] === 1) {
-              if (
-                rawMask[idx - 1] === 1 || rawMask[idx + 1] === 1 ||
-                rawMask[idx - rawWidth] === 1 || rawMask[idx + rawWidth] === 1
-              ) {
-                trappedMask[idx] = 1;
+            if (rawMask[idx] === 0) {
+              const inValidArea = validTrapArea
+                ? (validTrapArea[idx] === 1)
+                : (pixelTierMap[idx] >= 0 && spotColors[pixelTierMap[idx]].hex.toLowerCase() !== bgHex.toLowerCase());
+              if (inValidArea) {
+                if (
+                  rawMask[idx - 1] === 1 || rawMask[idx + 1] === 1 ||
+                  rawMask[idx - rawWidth] === 1 || rawMask[idx + rawWidth] === 1
+                ) {
+                  trappedMask[idx] = 1;
+                }
               }
             }
           }
         }
       }
 
-      pathD = traceMaskToPathD(trappedMask, rawWidth, rawHeight, {
-        optCurve: true,
-        alphaMax: 0.15,
-        optTolerance: 0.08,
-        turdSize: 2,
-        turnPolicy: 'minority'
-      });
+      // Dual-profile tracing:
+      // 1) Glyph Detector + Anti-Wiggle conditioning for compact typography (eliminates sinusoidal edge wiggles)
+      // 2) Adaptive speckle guard for complex shaded emblems (>12 spot colors) to prevent multi-MB path bloat
+      const isComplexShaded = spotColors.length > 12;
+      const structTurd = isComplexShaded ? 4 : 2;
+      const structTol = isComplexShaded ? 0.15 : 0.10;
+
+      if (!isBgColor) {
+        const { glyphMask, structuralMask, glyphCount } = detectGlyphMask(trappedMask, rawWidth, rawHeight);
+        if (glyphCount > 0) {
+          const cleanGlyphMask = smoothGlyphStaircases(glyphMask, rawWidth, rawHeight);
+          const glyphD = traceSubpixelMask(cleanGlyphMask, rawWidth, rawHeight, {
+            alphaMax: 0.35,
+            optTolerance: 0.24,
+            turdSize: 2,
+            subpixelThreshold: 0.45
+          });
+          const structD = traceSubpixelMask(structuralMask, rawWidth, rawHeight, {
+            alphaMax: 0.55,
+            optTolerance: structTol,
+            turdSize: structTurd,
+            subpixelThreshold: 0.45
+          });
+          pathD = compactSvgPathD([glyphD, structD].filter(Boolean).join(' '));
+        } else {
+          pathD = compactSvgPathD(traceSubpixelMask(trappedMask, rawWidth, rawHeight, {
+            alphaMax: 0.55,
+            optTolerance: structTol,
+            turdSize: structTurd,
+            subpixelThreshold: 0.45
+          }));
+        }
+      } else {
+        pathD = compactSvgPathD(traceSubpixelMask(trappedMask, rawWidth, rawHeight, {
+          alphaMax: 0.55,
+          optTolerance: structTol,
+          turdSize: structTurd,
+          subpixelThreshold: 0.45
+        }));
+      }
     }
 
     if (pathD && pathD.trim().length > 0) {
@@ -549,12 +595,9 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     }
   }
 
-  // Foreground layers: omit background color path for transparent background knockout
-  // In transparent logos, fringe pixels never match bgHex so all layers are foreground.
-  const fgVectorLayers = isTransparentLogo
-    ? allVectorLayers
-    : allVectorLayers.filter(l => !l.isBg);
-  const effectiveFgLayers = fgVectorLayers.length > 0 ? fgVectorLayers : allVectorLayers;
+  // Foreground layers: rely strictly on alpha channels; preserve 100% of opaque pixels (including white)
+  const fgVectorLayers = allVectorLayers;
+  const effectiveFgLayers = fgVectorLayers;
 
   progressCallback({ step: 4, name: 'Assembling Master Vector SVG & Tonal Plates', pct: 85 });
 
@@ -648,12 +691,11 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
         if (closestIdx === c) mask[p] = 1;
       }
 
-      const pathD = traceMaskToPathD(mask, rawWidth, rawHeight, {
-        optCurve: true,
-        alphaMax: 0.15,
-        optTolerance: 0.08,
+      const pathD = traceSubpixelMask(mask, rawWidth, rawHeight, {
+        alphaMax: 0.55,
+        optTolerance: 0.10,
         turdSize: 4,
-        turnPolicy: 'minority'
+        subpixelThreshold: 0.45
       });
 
       if (pathD && pathD.trim().length > 0) {
@@ -662,6 +704,8 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     }
   }
 
+  // For solid screenprint separation plate, omit redundant bgHex path since <rect fill="bgHex"> is drawn underneath.
+  // For transparent plate, rely strictly on alpha channels and preserve 100% of opaque pixels (including white).
   const fgReducedLayers = isTransparentLogo
     ? allReducedLayers
     : allReducedLayers.filter(l => !l.isBg);
@@ -674,14 +718,14 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   posterSolidInner += '  </g>\n';
 
   let posterTransparentInner = '  <!-- Spot-Color Reduction Plate (Up to 8 Inks) -->\n  <g id="screenprint-reduced-layers">\n';
-  for (const rl of effectiveFgReduced) {
+  for (const rl of allReducedLayers) {
     posterTransparentInner += `    <path fill="${rl.color}" fill-rule="evenodd" d="${rl.d}"/>\n`;
   }
   posterTransparentInner += '  </g>\n';
 
-  const posterBaseColor = effectiveFgReduced[0]?.color || dominantColors[0]?.hex || baseLogoColor;
+  const posterBaseColor = allReducedLayers[0]?.color || dominantColors[0]?.hex || baseLogoColor;
   const posterSolidSvg = effectiveFgReduced.length === 0 ? masterSolidSvg : buildSvg(posterSolidInner, bgHex);
-  const posterTransparentSvg = effectiveFgReduced.length === 0 ? masterTransparentSvg : buildSvg(posterTransparentInner, null, silhouettePathD, posterBaseColor);
+  const posterTransparentSvg = allReducedLayers.length === 0 ? masterTransparentSvg : buildSvg(posterTransparentInner, null, silhouettePathD, posterBaseColor);
 
   // 3. Seamless Planar Vector (pixelMatch):
   let pixelMatchSolidInner = '  <!-- Seamless Planar Vector Layers -->\n  <g id="seamless-planar-paths">\n';
@@ -917,14 +961,14 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   const poster8InvTransparentSvg = buildSvg(p8InvInner, null, silhouettePathD, '#000000');
 
   // 7. Stencil SVG (stencil):
-  const stencilMask = generateBridgeStencilMap(monoMask, rawWidth, rawHeight, 3, 40);
+  const stencilMask = generateBridgeStencilMap(monoMask, rawWidth, rawHeight, 0, 0);
   const stencilPathD = isAchromaticArt
     ? traceSubpixelMask(stencilMask, rawWidth, rawHeight, { alphaMax: 0.72, optTolerance: 0.10, turdSize: 0 })
-    : traceMaskToPathD(stencilMask, rawWidth, rawHeight, {
-        optCurve: true,
-        alphaMax: 0.15,
-        optTolerance: 0.08,
-        turdSize: 4
+    : traceSubpixelMask(stencilMask, rawWidth, rawHeight, {
+        alphaMax: 0.55,
+        optTolerance: 0.10,
+        turdSize: 4,
+        subpixelThreshold: 0.45
       });
 
   let stencilInner = '  <!-- Bridge-Connected Laser Cut Stencil Plate -->\n';
@@ -966,11 +1010,56 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   const chromaticSolidSvg = buildSvg(chromaticSolidInner, '#090d16');
   const chromaticTransparentSvg = buildSvg(chromaticTransparentInner, null);
 
+  // 10. Canva-Optimized Master SVG (<=5 focal solid colors preserving vivid accents + 3x3 despeckle)
+  let canvaSourceLayers = allVectorLayers;
+  if (spotColors.length > 4) {
+    const canvaPalette = selectCanvaPalette(spotColors, 4);
+    const rawCanvaTierMap = new Int16Array(totalPixels);
+    rawCanvaTierMap.fill(-1);
+    for (let p = 0, i = 0; i < rawPixels.length; i += 4, p++) {
+      if (rawPixels[i + 3] < 64) continue;
+      const pLab = rgbToLab(rawPixels[i], rawPixels[i + 1], rawPixels[i + 2]);
+      let bestDist = Infinity;
+      let bestIdx = 0;
+      for (let c = 0; c < canvaPalette.length; c++) {
+        const d = deltaE(pLab, canvaPalette[c].lab);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = c;
+        }
+      }
+      rawCanvaTierMap[p] = bestIdx;
+    }
+    const canvaTierMap = despeckleTierMap(rawCanvaTierMap, rawWidth, rawHeight);
+    canvaSourceLayers = [];
+    for (let c = 0; c < canvaPalette.length; c++) {
+      const cMask = new Uint8Array(totalPixels);
+      for (let p = 0; p < totalPixels; p++) {
+        if (canvaTierMap[p] === c) cMask[p] = 1;
+      }
+      const isLightest = c === canvaPalette.length - 1 && canvaPalette[c].lab[0] > 82;
+      const cD = compactSvgPathD(traceSubpixelMask(cMask, rawWidth, rawHeight, {
+        alphaMax: 0.55,
+        optTolerance: 0.25,
+        turdSize: isLightest ? 3 : 1,
+        subpixelThreshold: 0.45
+      }));
+      if (cD && cD.trim().length > 0) {
+        canvaSourceLayers.push({ color: canvaPalette[c].hex, d: cD, areaCount: canvaPalette[c].count || 0 });
+      }
+    }
+    canvaSourceLayers.sort((a, b) => (b.areaCount || 0) - (a.areaCount || 0));
+  }
+  const canvaSolidBackdrop = canvaSourceLayers[0] ? canvaSourceLayers[0].color : bgHex;
+  const canvaOptimizedSolidSvg = buildCanvaOptimizedSvg(rawWidth, rawHeight, canvaSourceLayers, canvaSolidBackdrop, null);
+  const canvaOptimizedTransparentSvg = buildCanvaOptimizedSvg(rawWidth, rawHeight, canvaSourceLayers, null, silhouettePathD);
+
   progressCallback({ step: 5, name: 'Vectorization Complete', pct: 100 });
 
   const solidSvgs = {
     masterVibrant: masterSolidSvg,
     masterFaithful: masterSolidSvg,
+    canvaOptimized: canvaOptimizedSolidSvg,
     posterizeColor: posterSolidSvg,
     pixelMatch: pixelMatchSolidSvg,
     monochrome: monoSolidSvg,
@@ -987,6 +1076,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   const transparentSvgs = {
     masterVibrant: masterTransparentSvg,
     masterFaithful: masterTransparentSvg,
+    canvaOptimized: canvaOptimizedTransparentSvg,
     posterizeColor: posterTransparentSvg,
     pixelMatch: pixelMatchTransparentSvg,
     monochrome: monoTransparentSvg,
@@ -1004,6 +1094,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
 
   return {
     mode: 'logo',
+    options: { ...options, maxColors: options.maxColors || 32, tiers: options.tiers || spotColors.length },
     dimensions: { width: rawWidth, height: rawHeight },
     tiers: spotColors.length,
     spotColors,

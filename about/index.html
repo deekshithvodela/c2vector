@@ -32,7 +32,8 @@
   <script>
     (function() {
       try {
-        const savedTheme = localStorage.getItem('c2vector-theme') || 'dark';
+        const rawTheme = localStorage.getItem('c2vector-theme');
+        const savedTheme = rawTheme === 'light' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', savedTheme);
         if (savedTheme === 'dark') {
           document.documentElement.classList.add('dark');
@@ -674,7 +675,7 @@
         </div>
         <div class="about-card-item">
           <h3><span>3</span> Inspect Interactive Studies</h3>
-          <p>Instantly preview the 13 specialized vector plates in the Studio Workbench, adjust the chromatic edge glaze slider in real time, or click color swatches to copy exact hex values.</p>
+          <p>Instantly preview the 14 specialized vector plates (including Canva Ready) in the Studio Workbench, edit vector layers and stroke weight live in Vector Pro Studio, or click color swatches to copy exact hex values.</p>
         </div>
         <div class="about-card-item">
           <h3><span>4</span> Export Production Assets</h3>

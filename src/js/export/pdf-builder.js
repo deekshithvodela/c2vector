@@ -22,6 +22,7 @@ export async function compileMasterVectorPdf(results, filename = 'c2vector_maste
   const svgs = [
     { title: 'Faithful Master Scalable Vector', subtitle: '64 Color Tiers • Authentic Match', key: 'masterFaithful' },
     { title: 'Vibrant Master Scalable Vector v2', subtitle: 'Tone Match Index Calibrated • Maximized Print Gamut', key: 'masterVibrant' },
+    { title: 'Canva-Optimized Master Vector', subtitle: '≤4 Editable Colors • Flat SVG 1.1 Profile', key: 'canvaOptimized' },
     { title: 'Color Posterize Print Plate (8-Tone)', subtitle: 'Bold Graphic Chromatic Planes for Silkscreen Art', key: 'posterizeColor' },
     { title: 'Seamless Pixel-Match Vector (Anti-Grid HD)', subtitle: 'Photorealistic Seamless Color Planes (Zero Grid Lines)', key: 'pixelMatch' },
     { title: '1-Bit Otsu Monochrome Stencil', subtitle: 'Pure Solid Black & White Vector Mask', key: 'monochrome' },

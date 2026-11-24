@@ -363,7 +363,7 @@ export async function runTestSuite() {
   // Inspect All 13 Artboard SVGs for Non-Blank Output
   console.log('\n--- 5. All 13 Logo Artboard Rendering & Dark Mode Plates ---');
   const artboardKeys = [
-    'masterVibrant', 'masterFaithful', 'posterizeColor', 'pixelMatch',
+    'masterVibrant', 'masterFaithful', 'canvaOptimized', 'posterizeColor', 'pixelMatch',
     'monochrome', 'twoTone', 'posterize4', 'posterize4Inverted', 'posterize8',
     'posterize8Inverted', 'stencil', 'cannyEdges', 'chromaticEdges'
   ];
@@ -621,6 +621,8 @@ export async function runTestSuite() {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('http://localhost:5173/c2vector/', { waitUntil: 'networkidle' });
+  await page.click('#tabModePhoto');
+  await page.waitForTimeout(200);
   await page.click('#btnSample');
   await page.waitForSelector('#workbench', { state: 'visible', timeout: 20000 });
   await page.waitForSelector('#viewport svg', { timeout: 20000 });

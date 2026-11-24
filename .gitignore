@@ -21,6 +21,8 @@ input/
 output/
 testing/
 test_images/
+test-results/
+playwright-report/
 
 # Ephemeral test results and scratch runs in scripts
 scripts/lighthouse_results.json

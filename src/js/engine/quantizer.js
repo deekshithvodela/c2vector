@@ -60,7 +60,8 @@ export function hexToRgb(hex) {
 /**
  * Fast Median-Cut Palette Quantizer
  */
-export function quantizePalette(pixels, maxColors = 64) {
+export function quantizePalette(pixels, maxColors = 64, minBoxRange = null) {
+  const effectiveMinRange = minBoxRange !== null ? minBoxRange : (maxColors > 8 ? 14 : 0);
   // Sample a subset of pixels for speed (up to 30,000 points)
   const step = Math.max(1, Math.floor(pixels.length / (4 * 30000)));
   const points = [];
@@ -99,7 +100,7 @@ export function quantizePalette(pixels, maxColors = 64) {
       }
     }
 
-    if (bestIdx === -1 || maxRange <= 0) break;
+    if (bestIdx === -1 || maxRange <= 0 || maxRange < effectiveMinRange) break;
 
     const boxToSplit = boxes[bestIdx];
     boxToSplit.sort((a, b) => a[bestChannel] - b[bestChannel]);
@@ -136,6 +137,221 @@ export function quantizePalette(pixels, maxColors = 64) {
   palette.sort((a, b) => a.L - b.L);
 
   return palette;
+}
+
+/**
+ * Perceptual CIELAB Palette Consolidation & Micro-Layer Absorption.
+ * Merges near-identical clusters (Delta E < minDeltaE) and absorbs < 0.15% micro-outliers
+ * to reduce redundant vector layers without visible quality loss.
+ */
+export function consolidatePalette(palette, options = {}) {
+  if (!palette || palette.length <= 2) return palette;
+  const minDeltaE = options.minDeltaE !== undefined ? options.minDeltaE : 5.5;
+  const minAreaRatio = options.minAreaRatio !== undefined ? options.minAreaRatio : 0.0015;
+
+  let clusters = palette.map(p => ({
+    ...p,
+    lab: p.lab || rgbToLab(p.r, p.g, p.b),
+    count: p.count || 1
+  }));
+
+  const totalCount = clusters.reduce((s, c) => s + c.count, 0) || 1;
+
+  function mergeInto(target, source) {
+    const wSum = target.count + source.count;
+    target.r = Math.round((target.r * target.count + source.r * source.count) / wSum);
+    target.g = Math.round((target.g * target.count + source.g * source.count) / wSum);
+    target.b = Math.round((target.b * target.count + source.b * source.count) / wSum);
+    target.hex = rgbToHex(target.r, target.g, target.b);
+    target.lab = rgbToLab(target.r, target.g, target.b);
+    target.L = target.lab[0];
+    target.count = wSum;
+  }
+
+  // 1. Absorb micro-outlier tiers (< 0.15% area) into nearest perceptual neighbor
+  for (let i = clusters.length - 1; i >= 0 && clusters.length > 2; i--) {
+    if ((clusters[i].count / totalCount) < minAreaRatio) {
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (let j = 0; j < clusters.length; j++) {
+        if (i === j) continue;
+        const d = deltaE(clusters[i].lab, clusters[j].lab);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = j;
+        }
+      }
+      if (bestIdx >= 0) {
+        mergeInto(clusters[bestIdx], clusters[i]);
+        clusters.splice(i, 1);
+      }
+    }
+  }
+
+  // 2. Iteratively merge closest perceptual pairs below minDeltaE
+  while (clusters.length > 2) {
+    let bestA = -1, bestB = -1, minDist = Infinity;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        const d = deltaE(clusters[i].lab, clusters[j].lab);
+        if (d < minDist) {
+          minDist = d;
+          bestA = i;
+          bestB = j;
+        }
+      }
+    }
+    if (bestA === -1 || minDist >= minDeltaE) break;
+    // Keep the larger cluster as primary
+    if (clusters[bestB].count > clusters[bestA].count) {
+      mergeInto(clusters[bestB], clusters[bestA]);
+      clusters.splice(bestA, 1);
+    } else {
+      mergeInto(clusters[bestA], clusters[bestB]);
+      clusters.splice(bestB, 1);
+    }
+  }
+
+  clusters.sort((a, b) => a.L - b.L);
+  return clusters;
+}
+
+/**
+ * Perceptual Focal-Accent Canva Palette Selection (<= 5 editable solid colors).
+ * Anchors darkest/lightest structural contrast, then picks remaining slots using
+ * Max-Min Delta E x Chroma Focal Scoring so vivid accents (e.g. red eyes, cobalt stripes)
+ * are preserved instead of being swallowed by large neutral backgrounds.
+ */
+export function selectCanvaPalette(candidates, maxColors = 5) {
+  if (!candidates || candidates.length <= maxColors) return candidates || [];
+
+  const pool = candidates.map(c => {
+    const lab = c.lab || rgbToLab(c.r, c.g, c.b);
+    const chroma = Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+    return { ...c, lab, L: lab[0], chroma, count: c.count || 1 };
+  });
+
+  const totalCount = pool.reduce((s, c) => s + c.count, 0) || 1;
+  const significant = pool.filter(c => (c.count / totalCount) >= 0.0015);
+  const working = significant.length >= maxColors ? significant : pool;
+
+  const selected = [];
+  const used = new Set();
+
+  // Anchor 1: Darkest structural tone (>= 2% area if available)
+  const majorDark = working.filter(c => (c.count / totalCount) >= 0.02);
+  const darkPool = majorDark.length > 0 ? majorDark : working;
+  let darkestIdx = 0;
+  for (let i = 1; i < darkPool.length; i++) {
+    if (darkPool[i].L < darkPool[darkestIdx].L) darkestIdx = i;
+  }
+  const darkAnchor = darkPool[darkestIdx];
+  selected.push(darkAnchor);
+  used.add(darkAnchor);
+
+  // Anchor 2: Lightest structural tone (>= 2% area if available)
+  const lightPool = majorDark.length > 1 ? majorDark.filter(c => !used.has(c)) : working.filter(c => !used.has(c));
+  if (lightPool.length > 0 && selected.length < maxColors) {
+    let lightestIdx = 0;
+    for (let i = 1; i < lightPool.length; i++) {
+      if (lightPool[i].L > lightPool[lightestIdx].L) lightestIdx = i;
+    }
+    const lightAnchor = lightPool[lightestIdx];
+    selected.push(lightAnchor);
+    used.add(lightAnchor);
+  }
+
+  // Remaining slots: Max-Min Delta E x Chroma Focal Scoring
+  while (selected.length < maxColors) {
+    let bestCand = null;
+    let bestScore = -1;
+    for (const cand of working) {
+      if (used.has(cand)) continue;
+      let minDE = Infinity;
+      for (const s of selected) {
+        const d = deltaE(cand.lab, s.lab);
+        if (d < minDE) minDE = d;
+      }
+      const areaRatio = Math.max(0.001, cand.count / totalCount);
+      const chromaBoost = 1 + Math.pow(cand.chroma, 1.35) / 25;
+      const score = chromaBoost * minDE * Math.pow(areaRatio, 0.2);
+      if (score > bestScore) {
+        bestScore = score;
+        bestCand = cand;
+      }
+    }
+    if (!bestCand) break;
+    selected.push(bestCand);
+    used.add(bestCand);
+  }
+
+  selected.sort((a, b) => a.L - b.L);
+  return selected;
+}
+
+/**
+ * Perceptual CIELAB Delta E pixel mapping (preserves vivid red/blue accents accurately).
+ */
+export function mapPixelsToPaletteLab(pixels, palette) {
+  const indices = new Uint8Array(pixels.length / 4);
+  const palLabs = palette.map(p => p.lab || rgbToLab(p.r, p.g, p.b));
+
+  for (let i = 0, p = 0; i < pixels.length; i += 4, p++) {
+    const pLab = rgbToLab(pixels[i], pixels[i + 1], pixels[i + 2]);
+    let bestDist = Infinity;
+    let bestTier = 0;
+    for (let t = 0; t < palLabs.length; t++) {
+      const d = deltaE(pLab, palLabs[t]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestTier = t;
+      }
+    }
+    indices[p] = bestTier;
+  }
+  return indices;
+}
+
+/**
+ * 3x3 Spatial Majority Despeckle for quantized tier maps (prunes 1px brush/weave/anti-aliasing noise).
+ * @param {boolean} [strict=false] - Also prune 2-same-neighbor fringes surrounded by >=6 dominant neighbors
+ */
+export function despeckleTierMap(tierMap, width, height, strict = false) {
+  const out = new tierMap.constructor(tierMap);
+  for (let y = 1; y < height - 1; y++) {
+    const yOff = y * width;
+    for (let x = 1; x < width - 1; x++) {
+      const idx = yOff + x;
+      const cur = tierMap[idx];
+      if (cur < 0) continue;
+      let same = 0;
+      let domTier = cur;
+      let domCount = 0;
+      const counts = new Map();
+      for (let dy = -1; dy <= 1; dy++) {
+        const nRow = (y + dy) * width;
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nt = tierMap[nRow + x + dx];
+          if (nt < 0) continue;
+          if (nt === cur) {
+            same++;
+          } else {
+            const c = (counts.get(nt) || 0) + 1;
+            counts.set(nt, c);
+            if (c > domCount) {
+              domCount = c;
+              domTier = nt;
+            }
+          }
+        }
+      }
+      if ((same <= 1 && domCount >= 5) || (strict && same <= 2 && domCount >= 6)) {
+        out[idx] = domTier;
+      }
+    }
+  }
+  return out;
 }
 
 /**
