@@ -4,9 +4,32 @@ import fs from 'fs';
 
 const buildVersion = 'v' + Date.now().toString(36);
 
-function versionStampPlugin() {
+const PROD_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://gc.zgo.at",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https:",
+  "worker-src 'self' blob:",
+  "connect-src 'self' blob: data: https://c2vector.goatcounter.com https://gc.zgo.at",
+  "object-src 'none'",
+  "base-uri 'self'"
+].join('; ');
+
+function productionSecurityPlugin() {
+  let isBuild = false;
   return {
-    name: 'c2vector-version-stamp',
+    name: 'c2vector-production-security',
+    configResolved(config) {
+      isBuild = config.command === 'build';
+    },
+    transformIndexHtml(html) {
+      if (!isBuild || html.includes('http-equiv="Content-Security-Policy"')) return html;
+      return html.replace(
+        /<meta name="viewport"[^>]*>/,
+        (match) => `${match}\n  <meta http-equiv="Content-Security-Policy" content="${PROD_CSP}">`
+      );
+    },
     writeBundle(options) {
       const outDir = options.dir || resolve(__dirname, 'dist');
       const swPath = resolve(outDir, 'sw.js');
@@ -24,7 +47,7 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(buildVersion)
   },
-  plugins: [versionStampPlugin()],
+  plugins: [productionSecurityPlugin()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

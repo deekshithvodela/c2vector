@@ -91,7 +91,7 @@
       "Seamless pixel match with anti-grid curve smoothing",
       "Canny sub-pixel hairline edges with dynamic chromatic glaze",
       "Continuous cubic Bézier curve fitting with G1 continuity",
-      "Infinitely scalable 13-page vector PDF compiler",
+      "Infinitely scalable 15-page vector PDF compiler",
       "High-res PNG offscreen canvas exporter (1x, 2x, 4x)"
     ]
   }
@@ -310,8 +310,8 @@
               <!-- Real-Time Edge Opacity Slider (0 to 100 Range) -->
               <div class="edge-opacity-control" id="edgeOpacityControl">
                 <label for="edgeOpacitySlider" class="edge-opacity-label">Edge Glaze:</label>
-                <input type="range" id="edgeOpacitySlider" min="0" max="100" value="75" step="1" aria-label="Adjust chromatic contour glaze opacity" class="edge-opacity-slider">
-                <span id="edgeOpacityVal" class="edge-opacity-val">75%</span>
+                <input type="range" id="edgeOpacitySlider" min="0" max="100" value="0" step="1" aria-label="Adjust chromatic contour glaze opacity" class="edge-opacity-slider">
+                <span id="edgeOpacityVal" class="edge-opacity-val">0%</span>
                 <button type="button" id="btnToggleEdges" class="contour-toggle-btn active" title="Toggle chromatic edge outlines on/off" aria-label="Toggle chromatic edge outlines">Visible</button>
               </div>
 
@@ -370,9 +370,9 @@
             <!-- 4. Fabrication & Plotter Paths -->
             <div class="tab-group" data-domain="fabrication" title="CNC, Laser Cutters & Vinyl Plotter Toolpaths">
               <span class="tab-group-label">Fabrication</span>
-              <button type="button" class="tab-btn" data-artboard="stencil" role="tab" aria-selected="false" title="Clean Cut Stencil — Island-Bridged Solid Vector Paths">Cut Stencil</button>
-              <button type="button" class="tab-btn" data-artboard="cannyEdges" role="tab" aria-selected="false" title="Canny Sub-Pixel Hairline Edges — 1-px Ridge Outlines">Wireframe</button>
-              <button type="button" class="tab-btn" data-artboard="chromaticEdges" role="tab" aria-selected="false" title="Translucent Chromatic Contours — 70%-80% Opacity Glaze">Die-Cut</button>
+              <button type="button" class="tab-btn" data-artboard="stencil" role="tab" aria-selected="false" title="Bridge-Connected Laser Cut Stencil — Topological Island Bridges">Cut Stencil</button>
+              <button type="button" class="tab-btn" data-artboard="cannyEdges" role="tab" aria-selected="false" title="CAD Plotter Wireframe — Single-Pass Untrapped Hairline Toolpaths">Wireframe</button>
+              <button type="button" class="tab-btn" data-artboard="chromaticEdges" role="tab" aria-selected="false" title="Sticker Die-Cut Contour — Offset Carrier Cushion &amp; Magenta #CutContour">Die-Cut</button>
             </div>
           </nav>
 
@@ -489,6 +489,15 @@
                 </div>
               </div>
               <input type="range" id="strokeWeightSlider" class="studio-slider" min="0" max="8" value="0" step="0.5" aria-label="Adjust stroke weight and kerf bleed">
+            </div>
+
+            <!-- Real-Time Refine Stroke / Smoothness -->
+            <div class="studio-tool-group">
+              <div class="studio-tool-header">
+                <label for="refineStrokeSlider" class="studio-label">Refine Stroke / Smoothness</label>
+                <button type="button" id="btnResetRefine" class="btn-micro" title="Reset stroke refinement to 0%">↺</button>
+              </div>
+              <input type="range" id="refineStrokeSlider" class="studio-slider" min="0" max="100" value="0" step="1" aria-label="Refine and smooth jagged vector strokes">
             </div>
 
             <!-- Active Vector Layers Tree -->

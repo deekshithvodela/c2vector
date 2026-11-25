@@ -19,21 +19,40 @@ export async function compileMasterVectorPdf(results, filename = 'c2vector_maste
     format: [pageWidth, pageHeight]
   });
 
-  const svgs = [
-    { title: 'Faithful Master Scalable Vector', subtitle: '64 Color Tiers • Authentic Match', key: 'masterFaithful' },
-    { title: 'Vibrant Master Scalable Vector v2', subtitle: 'Tone Match Index Calibrated • Maximized Print Gamut', key: 'masterVibrant' },
-    { title: 'Canva-Optimized Master Vector', subtitle: '≤4 Editable Colors • Flat SVG 1.1 Profile', key: 'canvaOptimized' },
-    { title: 'Color Posterize Print Plate (8-Tone)', subtitle: 'Bold Graphic Chromatic Planes for Silkscreen Art', key: 'posterizeColor' },
-    { title: 'Seamless Pixel-Match Vector (Anti-Grid HD)', subtitle: 'Photorealistic Seamless Color Planes (Zero Grid Lines)', key: 'pixelMatch' },
-    { title: '1-Bit Otsu Monochrome Stencil', subtitle: 'Pure Solid Black & White Vector Mask', key: 'monochrome' },
-    { title: '2-Tone Duotone Print Plate', subtitle: 'Key Ink & Midtone Modeling Ink Separation', key: 'twoTone' },
-    { title: '4-Tone Monochrome Print Plate (Positive)', subtitle: 'Quantized Grayscale for Screenprint & Litho', key: 'posterize4' },
-    { title: '4-Tone Inverted Print Plate (Negative)', subtitle: 'Negative Plate for Dark Apparel & Laser Engraving', key: 'posterize4Inverted' },
-    { title: '8-Tone Graduated Grayscale Plate (Positive)', subtitle: 'Fine Modeling & Volumetric Depth', key: 'posterize8' },
-    { title: '8-Tone Inverted Graduated Plate (Negative)', subtitle: 'Discharge Ink & Fine Art Lithography', key: 'posterize8Inverted' },
-    { title: 'Bridge-Connected Cut Stencil', subtitle: 'Island-Bridged Vector Paths for Plotters & Laser Cutters', key: 'stencil' },
-    { title: 'Translucent Chromatic Contours', subtitle: '70%–80% Opacity Glaze (Zero Flat Black Ink)', key: 'chromaticEdges' }
-  ];
+  const isLogo = results?.mode === 'logo';
+  const svgs = isLogo
+    ? [
+        { title: 'Master Spot-Color Logo Vector', subtitle: 'Corner-Preserving Brand Vector (alphaMax: 0.15)', key: 'masterVibrant' },
+        { title: 'Master Faithful Logo Vector', subtitle: 'Exact Source Spot-Color Match', key: 'masterFaithful' },
+        { title: 'Canva-Optimized Master Logo', subtitle: '≤4 Editable Colors • Flat SVG 1.1 Profile', key: 'canvaOptimized' },
+        { title: 'Spot-Color Reduction (Up to 8 Inks)', subtitle: 'Salient Brand Colors for Screenprint & Embroidery', key: 'posterizeColor' },
+        { title: 'Seamless Planar Vector (Decal)', subtitle: 'Contiguous Boundary Fusion • Zero Inter-Path Seams', key: 'pixelMatch' },
+        { title: '1-Bit High-Contrast Silhouette', subtitle: 'Solid Black Vector Mask on Contrast Substrate', key: 'monochrome' },
+        { title: '2-Tone Duotone Print Plate', subtitle: 'Key Ink & Midtone Modeling Ink Separation', key: 'twoTone' },
+        { title: '4-Tone Grayscale Plate (Positive)', subtitle: 'Quantized Grayscale for Screenprint & Litho', key: 'posterize4' },
+        { title: '4-Tone Negative Plate (Dark Apparel)', subtitle: 'Inverted Plate for Dark Garments & Laser Engraving', key: 'posterize4Inverted' },
+        { title: '8-Tone Grayscale Modeling Plate', subtitle: 'Graduated Grayscale Art Plate for Lithography', key: 'posterize8' },
+        { title: '8-Tone Inverted Discharge Plate', subtitle: 'Discharge Ink Plate for Dark Textiles', key: 'posterize8Inverted' },
+        { title: 'Bridge-Connected Laser Cut Stencil', subtitle: 'Topologically Bridged Islands for Laser & Vinyl Plotters', key: 'stencil' },
+        { title: 'CAD Plotter Wireframe', subtitle: 'Clean Untrapped Foreground Hairline Cut Paths', key: 'cannyEdges' },
+        { title: 'Sticker Die-Cut Contour (#CutContour)', subtitle: 'Offset Carrier Cushion, Magenta CutContour & Crop Marks', key: 'chromaticEdges' }
+      ]
+    : [
+        { title: 'Faithful Master Scalable Vector', subtitle: 'Authentic Source Match • Quantized Bézier Tiers', key: 'masterFaithful' },
+        { title: 'Vibrant Master Scalable Vector v2', subtitle: 'Tone Match Index Calibrated • Maximized Print Gamut', key: 'masterVibrant' },
+        { title: 'Canva-Optimized Master Vector', subtitle: '≤4 Editable Colors • Flat SVG 1.1 Profile', key: 'canvaOptimized' },
+        { title: 'Color Posterize Print Plate (8-Tone)', subtitle: 'Bold Graphic Chromatic Planes for Silkscreen Art', key: 'posterizeColor' },
+        { title: 'Seamless Pixel-Match Vector (Anti-Grid HD)', subtitle: 'Photorealistic Seamless Color Planes (Zero Grid Lines)', key: 'pixelMatch' },
+        { title: '1-Bit Otsu Monochrome Stencil', subtitle: 'Pure Solid Black & White Vector Mask', key: 'monochrome' },
+        { title: '2-Tone Duotone Print Plate', subtitle: 'Key Ink & Midtone Modeling Ink Separation', key: 'twoTone' },
+        { title: '4-Tone Monochrome Print Plate (Positive)', subtitle: 'Quantized Grayscale for Screenprint & Litho', key: 'posterize4' },
+        { title: '4-Tone Inverted Print Plate (Negative)', subtitle: 'Negative Plate for Dark Apparel & Laser Engraving', key: 'posterize4Inverted' },
+        { title: '8-Tone Graduated Grayscale Plate (Positive)', subtitle: 'Fine Modeling & Volumetric Depth', key: 'posterize8' },
+        { title: '8-Tone Inverted Graduated Plate (Negative)', subtitle: 'Discharge Ink & Fine Art Lithography', key: 'posterize8Inverted' },
+        { title: 'Bridge-Connected Laser Cut Stencil', subtitle: 'Topologically Bridged Islands for Laser & Vinyl Plotters', key: 'stencil' },
+        { title: 'CAD Plotter Wireframe (1-Pass)', subtitle: 'Single-Line Centerline Vector Strokes (Zero Double Cuts)', key: 'cannyEdges' },
+        { title: 'Sticker Die-Cut Contour (#CutContour)', subtitle: 'Offset Carrier Cushion, Magenta CutContour & Crop Marks', key: 'chromaticEdges' }
+      ];
 
   const totalPages = svgs.length + 1;
   const parser = new DOMParser();
@@ -75,9 +94,11 @@ export async function compileMasterVectorPdf(results, filename = 'c2vector_maste
   pdf.setFontSize(11);
   const dims = results.dimensions || { width: 1856, height: 2048 };
   pdf.text(`Canvas Resolution: ${dims.width} × ${dims.height} px (Full HD Vector)`, 85, 220);
-  pdf.text(`Bézier Color Tiers: ${results.tiers || 48} Distinct Quantized Paths`, 85, 238);
+  pdf.text(`Bézier Color Tiers: ${results.tiers || (isLogo ? 8 : 48)} Distinct Quantized Paths`, 85, 238);
   const tmi = results.tmiReport || { pearsonR: 0.98, inversions: 0 };
-  pdf.text(`Tone Match Index (TMI): Pearson r = ${tmi.pearsonR.toFixed(4)}, Monotonic Inversions: ${tmi.inversions}`, 85, 256);
+  const pearsonVal = typeof tmi.pearsonR === 'number' ? tmi.pearsonR : 0.98;
+  const invVal = typeof tmi.inversions === 'number' ? tmi.inversions : 0;
+  pdf.text(`Tone Match Index (TMI): Pearson r = ${pearsonVal.toFixed(4)}, Monotonic Inversions: ${invVal}`, 85, 256);
 
   // Index of Artboards
   pdf.setTextColor(255, 255, 255);
@@ -88,24 +109,24 @@ export async function compileMasterVectorPdf(results, filename = 'c2vector_maste
   let curY = 330;
   svgs.forEach((item, idx) => {
     pdf.setFillColor(idx % 2 === 0 ? 15 : 20, idx % 2 === 0 ? 23 : 30, idx % 2 === 0 ? 42 : 55);
-    pdf.roundedRect(65, curY - 12, pageWidth - 130, 28, 4, 4, 'F');
+    pdf.roundedRect(65, curY - 11, pageWidth - 130, 25, 4, 4, 'F');
 
     pdf.setTextColor(56, 189, 248);
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(10);
-    pdf.text(`PAGE ${String(idx + 2).padStart(2, '0')}`, 78, curY + 6);
+    pdf.setFontSize(9.5);
+    pdf.text(`PAGE ${String(idx + 2).padStart(2, '0')}`, 78, curY + 5);
 
     pdf.setTextColor(255, 255, 255);
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(10.5);
-    pdf.text(item.title, 142, curY + 6);
+    pdf.setFontSize(10);
+    pdf.text(item.title, 142, curY + 5);
 
     pdf.setTextColor(148, 163, 184);
     pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9.5);
-    pdf.text(item.subtitle, 470, curY + 6);
+    pdf.setFontSize(9);
+    pdf.text(item.subtitle, 465, curY + 5);
 
-    curY += 34;
+    curY += 31;
   });
 
   // Cover Footer

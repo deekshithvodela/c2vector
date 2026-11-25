@@ -55,7 +55,7 @@ self.addEventListener('fetch', (event) => {
         .then((networkResponse) => {
           if (networkResponse && networkResponse.ok && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache)).catch(() => {});
           }
           return networkResponse;
         })
@@ -77,11 +77,11 @@ self.addEventListener('fetch', (event) => {
           // Never cache an HTML 404 fallback under a JS/CSS asset key
           if (!(isScriptOrStyle && contentType.includes('text/html'))) {
             const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache)).catch(() => {});
           }
         }
         return networkResponse;
-      });
+      }).catch(() => Response.error());
     })
   );
 });

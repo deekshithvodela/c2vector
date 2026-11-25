@@ -8,10 +8,10 @@
  * - 1-click transparent background knockout
  */
 
-import { buildCanvaOptimizedSvg, compactSvgPathD } from './bezier-tracer.js';
+import { buildCanvaOptimizedSvg, compactSvgPathD, buildWireframeSvg, buildDieCutSvg } from './bezier-tracer.js';
 import { traceMaskToPathD, traceMaskToSubpaths } from './potrace.js';
-import { rgbToHsv, hsvToRgb, computeLuminance } from './image-ops.js';
-import { computeOtsuThreshold, generateBridgeStencilMap, generateExactAlphaMask, generateOptimizedLineArtMask, detectGlyphMask, smoothGlyphStaircases } from './tonal-studies.js';
+import { rgbToHsv, hsvToRgb, computeLuminance, resampleBicubic } from './image-ops.js';
+import { computeOtsuThreshold, generateCutStencilSourceMask, generateBridgeStencilMap, generateExactAlphaMask, generateOptimizedLineArtMask, detectGlyphMask, smoothGlyphStaircases, extractPhotoForegroundMask, computeDieCutParams } from './tonal-studies.js';
 import { rgbToLab, deltaE, hexToRgb, rgbToHex, selectCanvaPalette, despeckleTierMap } from './quantizer.js';
 
 /**
@@ -171,6 +171,11 @@ export function detectSpotColors(pixels, width, height, maxColors = 32) {
           primaryDark.rSum += sc.rSum;
           primaryDark.gSum += sc.gSum;
           primaryDark.bSum += sc.bSum;
+          primaryDark.r = Math.min(255, Math.max(0, Math.round(primaryDark.rSum / primaryDark.count)));
+          primaryDark.g = Math.min(255, Math.max(0, Math.round(primaryDark.gSum / primaryDark.count)));
+          primaryDark.b = Math.min(255, Math.max(0, Math.round(primaryDark.bSum / primaryDark.count)));
+          primaryDark.lab = rgbToLab(primaryDark.r, primaryDark.g, primaryDark.b);
+          primaryDark.hex = rgbToHex(primaryDark.r, primaryDark.g, primaryDark.b);
         } else {
           remaining.push(sc);
         }
@@ -228,11 +233,14 @@ export function detectSpotColors(pixels, width, height, maxColors = 32) {
  */
 export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeight, options = {}, progressCallback = () => {}) {
   // Cap dimensions to maximum 1400px to preserve performance while retaining native edge sharpness
-  let targetW = rawWidth;
-  let targetH = rawHeight;
-  if (targetW > 1400) {
-    targetW = 1400;
-    targetH = Math.round(rawHeight * (1400 / rawWidth));
+  const maxEdge = Math.max(rawWidth, rawHeight);
+  if (maxEdge > 1400) {
+    const scale = 1400 / maxEdge;
+    const targetW = Math.max(1, Math.round(rawWidth * scale));
+    const targetH = Math.max(1, Math.round(rawHeight * scale));
+    rawPixels = resampleBicubic(rawPixels, rawWidth, rawHeight, targetW, targetH);
+    rawWidth = targetW;
+    rawHeight = targetH;
   }
 
   progressCallback({ step: 1, name: 'Detecting Dominant Spot Colors & Snapping Anti-Aliased Edges', pct: 20 });
@@ -442,72 +450,82 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
 
     let pathD = '';
     if (isAchromaticArt && inkDensities) {
-      // Sub-Pixel Line-Art Vectorization Pipeline with Dual-Pass Glyph & Stroke Optimization:
-      // High-precision 2x sub-pixel upsampling with compound mask synthesis.
-      // - Calibrates stroke thickness to match master artwork line weight (within ±0.5%)
-      // - Restores open negative whitespace slits between helical arcs, acanthus foliage, and daisy petals
-      // - Detects compact handwriting glyphs, Telugu/Brahmi marks, and ancient runes at bold ink threshold
-      // - Produces smooth G^1 cubic Béziers without angular facet corners (alphaMax: 0.72, optTolerance: 0.10)
-      const scale = 2;
-      const w2 = rawWidth * scale;
-      const h2 = rawHeight * scale;
-      const ink2 = new Uint8Array(w2 * h2);
-
-      const xRatio = (rawWidth - 1) / (w2 - 1);
-      const yRatio = (rawHeight - 1) / (h2 - 1);
-
-      for (let y = 0; y < h2; y++) {
-        const gy = y * yRatio;
-        const y0 = Math.floor(gy);
-        const y1 = Math.min(y0 + 1, rawHeight - 1);
-        const dy = gy - y0;
-        const invDy = 1 - dy;
-
-        const row0 = y0 * rawWidth;
-        const row1 = y1 * rawWidth;
-        const dstRow = y * w2;
-
-        for (let x = 0; x < w2; x++) {
-          const gx = x * xRatio;
-          const x0 = Math.floor(gx);
-          const x1 = Math.min(x0 + 1, rawWidth - 1);
-          const dx = gx - x0;
-
-          const v00 = inkDensities[row0 + x0];
-          const v10 = inkDensities[row0 + x1];
-          const v01 = inkDensities[row1 + x0];
-          const v11 = inkDensities[row1 + x1];
-
-          ink2[dstRow + x] = Math.round((1 - dx) * (invDy * v00 + dy * v01) + dx * (invDy * v10 + dy * v11));
-        }
-      }
-
-      const isMultiTier = spotColors.length > 1 && c === 0;
-      let subMask;
-      if (isMultiTier) {
-        subMask = new Uint8Array(w2 * h2);
-        for (let i = 0; i < w2 * h2; i++) {
-          if (ink2[i] >= 140) subMask[i] = 1;
-        }
+      if (spotColors.length > 1 && c > 0) {
+        // Multi-tier muted/sepia graphic (e.g. 2-tone traditional art): trace only this tier's pixels so lighter tones never overwrite dark ink
+        pathD = compactSvgPathD(traceSubpixelMask(rawMask, rawWidth, rawHeight, {
+          alphaMax: 0.55,
+          optTolerance: 0.10,
+          turdSize: 2,
+          subpixelThreshold: 0.45
+        }));
       } else {
-        const isHighRes = Math.max(rawWidth, rawHeight) >= 1400;
-        subMask = generateOptimizedLineArtMask(ink2, w2, h2, {
-          strokeThreshold: isHighRes ? 128 : 105,
-          glyphThreshold: isHighRes ? 85 : 90,
-          maxGlyphDim: Math.round(Math.max(w2, h2) * 0.055),
-          maxGlyphArea: Math.round(Math.max(w2, h2) * 1.5)
+        // Sub-Pixel Line-Art Vectorization Pipeline with Dual-Pass Glyph & Stroke Optimization:
+        // High-precision 2x sub-pixel upsampling with compound mask synthesis.
+        // - Calibrates stroke thickness to match master artwork line weight (within ±0.5%)
+        // - Restores open negative whitespace slits between helical arcs, acanthus foliage, and daisy petals
+        // - Detects compact handwriting glyphs, Telugu/Brahmi marks, and ancient runes at bold ink threshold
+        // - Produces smooth G^1 cubic Béziers without angular facet corners (alphaMax: 0.72, optTolerance: 0.10)
+        const scale = 2;
+        const w2 = rawWidth * scale;
+        const h2 = rawHeight * scale;
+        const ink2 = new Uint8Array(w2 * h2);
+
+        const xRatio = (rawWidth - 1) / (w2 - 1);
+        const yRatio = (rawHeight - 1) / (h2 - 1);
+
+        for (let y = 0; y < h2; y++) {
+          const gy = y * yRatio;
+          const y0 = Math.floor(gy);
+          const y1 = Math.min(y0 + 1, rawHeight - 1);
+          const dy = gy - y0;
+          const invDy = 1 - dy;
+
+          const row0 = y0 * rawWidth;
+          const row1 = y1 * rawWidth;
+          const dstRow = y * w2;
+
+          for (let x = 0; x < w2; x++) {
+            const gx = x * xRatio;
+            const x0 = Math.floor(gx);
+            const x1 = Math.min(x0 + 1, rawWidth - 1);
+            const dx = gx - x0;
+
+            const v00 = inkDensities[row0 + x0];
+            const v10 = inkDensities[row0 + x1];
+            const v01 = inkDensities[row1 + x0];
+            const v11 = inkDensities[row1 + x1];
+
+            ink2[dstRow + x] = Math.round((1 - dx) * (invDy * v00 + dy * v01) + dx * (invDy * v10 + dy * v11));
+          }
+        }
+
+        const isMultiTier = spotColors.length > 1 && c === 0;
+        let subMask;
+        if (isMultiTier) {
+          subMask = new Uint8Array(w2 * h2);
+          for (let i = 0; i < w2 * h2; i++) {
+            if (ink2[i] >= 140) subMask[i] = 1;
+          }
+        } else {
+          const isHighRes = Math.max(rawWidth, rawHeight) >= 1400;
+          subMask = generateOptimizedLineArtMask(ink2, w2, h2, {
+            strokeThreshold: isHighRes ? 128 : 105,
+            glyphThreshold: isHighRes ? 85 : 90,
+            maxGlyphDim: Math.round(Math.max(w2, h2) * 0.055),
+            maxGlyphArea: Math.round(Math.max(w2, h2) * 1.5)
+          });
+        }
+
+        const rawSubD = traceMaskToPathD(subMask, w2, h2, {
+          optCurve: true,
+          alphaMax: 0.72,
+          optTolerance: 0.10,
+          turdSize: 0, // in 2x space, 0 preserves all micro-dots, stippling, and internal white holes
+          turnPolicy: 'minority'
         });
+
+        pathD = scalePathData(rawSubD, 0.5);
       }
-
-      const rawSubD = traceMaskToPathD(subMask, w2, h2, {
-        optCurve: true,
-        alphaMax: 0.72,
-        optTolerance: 0.10,
-        turdSize: 0, // in 2x space, 0 preserves all micro-dots, stippling, and internal white holes
-        turnPolicy: 'minority'
-      });
-
-      pathD = scalePathData(rawSubD, 0.5);
     } else {
       // Standard Geometric Logo Vectorization (sharp typography & corporate brand curves)
       const trappedMask = new Uint8Array(rawMask);
@@ -549,39 +567,36 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
       const structTurd = isComplexShaded ? 4 : 2;
       const structTol = isComplexShaded ? 0.15 : 0.10;
 
-      if (!isBgColor) {
-        const { glyphMask, structuralMask, glyphCount } = detectGlyphMask(trappedMask, rawWidth, rawHeight);
-        if (glyphCount > 0) {
-          const cleanGlyphMask = smoothGlyphStaircases(glyphMask, rawWidth, rawHeight);
-          const glyphD = traceSubpixelMask(cleanGlyphMask, rawWidth, rawHeight, {
-            alphaMax: 0.35,
-            optTolerance: 0.24,
-            turdSize: 2,
-            subpixelThreshold: 0.45
-          });
-          const structD = traceSubpixelMask(structuralMask, rawWidth, rawHeight, {
-            alphaMax: 0.55,
-            optTolerance: structTol,
-            turdSize: structTurd,
-            subpixelThreshold: 0.45
-          });
-          pathD = compactSvgPathD([glyphD, structD].filter(Boolean).join(' '));
-        } else {
-          pathD = compactSvgPathD(traceSubpixelMask(trappedMask, rawWidth, rawHeight, {
-            alphaMax: 0.55,
-            optTolerance: structTol,
-            turdSize: structTurd,
-            subpixelThreshold: 0.45
-          }));
+      const traceSpotMask = (m, allowGlyphSplit) => {
+        if (allowGlyphSplit) {
+          const { glyphMask, structuralMask, glyphCount } = detectGlyphMask(m, rawWidth, rawHeight);
+          if (glyphCount > 0) {
+            const cleanGlyphMask = smoothGlyphStaircases(glyphMask, rawWidth, rawHeight);
+            const glyphD = traceSubpixelMask(cleanGlyphMask, rawWidth, rawHeight, {
+              alphaMax: 0.35,
+              optTolerance: 0.24,
+              turdSize: 2,
+              subpixelThreshold: 0.45
+            });
+            const structD = traceSubpixelMask(structuralMask, rawWidth, rawHeight, {
+              alphaMax: 0.55,
+              optTolerance: structTol,
+              turdSize: structTurd,
+              subpixelThreshold: 0.45
+            });
+            return compactSvgPathD([glyphD, structD].filter(Boolean).join(' '));
+          }
         }
-      } else {
-        pathD = compactSvgPathD(traceSubpixelMask(trappedMask, rawWidth, rawHeight, {
+        return compactSvgPathD(traceSubpixelMask(m, rawWidth, rawHeight, {
           alphaMax: 0.55,
           optTolerance: structTol,
           turdSize: structTurd,
           subpixelThreshold: 0.45
         }));
-      }
+      };
+
+      pathD = traceSpotMask(trappedMask, !isBgColor);
+      var rawUntrappedD = (shouldTrap && !isBgColor) ? traceSpotMask(rawMask, true) : pathD;
     }
 
     if (pathD && pathD.trim().length > 0) {
@@ -590,6 +605,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
         name: `Spot Color ${c + 1} (${col.hex})`,
         color: col.hex,
         d: pathD,
+        rawD: isAchromaticArt ? pathD : (rawUntrappedD || pathD),
         isBg: col.hex.toLowerCase() === bgHex.toLowerCase()
       });
     }
@@ -796,7 +812,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
     if (allVectorLayers.length > 0) {
       ttDarkPath = allVectorLayers[0].d;
     } else {
-      ttDarkPath = pathD;
+      ttDarkPath = '';
     }
 
     // Midtone path: only present if there are true discrete gray wash pixels (not anti-aliased edge falloffs)
@@ -838,7 +854,7 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
         const lum = computeLuminance(rawPixels[i], rawPixels[i + 1], rawPixels[i + 2]);
         if (lum < 85 && a >= 128) {
           twoToneDarkMask[p] = 1;
-        } else if (lum < 195 || a >= 64) {
+        } else if (lum < 195) {
           twoToneMidMask[p] = 1;
         }
       }
@@ -961,8 +977,12 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
   const poster8InvTransparentSvg = buildSvg(p8InvInner, null, silhouettePathD, '#000000');
 
   // 7. Stencil SVG (stencil):
-  const stencilMask = generateBridgeStencilMap(monoMask, rawWidth, rawHeight, 0, 0);
-  const stencilPathD = isAchromaticArt
+  const isSingleInkLineArt = isAchromaticArt && spotColors.length <= 1;
+  const stencilInputMask = isSingleInkLineArt
+    ? monoMask
+    : generateCutStencilSourceMask(rawPixels, rawWidth, rawHeight, { isAchromaticArt: false, isTransparent: isTransparentLogo });
+  const stencilMask = generateBridgeStencilMap(stencilInputMask, rawWidth, rawHeight, { preserveFineDetail: isSingleInkLineArt });
+  const stencilPathD = isSingleInkLineArt
     ? traceSubpixelMask(stencilMask, rawWidth, rawHeight, { alphaMax: 0.72, optTolerance: 0.10, turdSize: 0 })
     : traceSubpixelMask(stencilMask, rawWidth, rawHeight, {
         alphaMax: 0.55,
@@ -971,46 +991,53 @@ export async function runLogoVectorizationPipeline(rawPixels, rawWidth, rawHeigh
         subpixelThreshold: 0.45
       });
 
-  let stencilInner = '  <!-- Bridge-Connected Laser Cut Stencil Plate -->\n';
+  let stencilInner = '  <!-- Topological Island-Bridged Laser Cut Stencil Plate -->\n';
   if (stencilPathD && stencilPathD.trim().length > 0) {
     stencilInner += `  <path fill="#000000" fill-rule="evenodd" d="${stencilPathD}"/>\n`;
   }
   const stencilSolidSvg = buildSvg(stencilInner, '#ffffff');
   const stencilTransparentSvg = buildSvg(stencilInner, null, silhouettePathD, '#ffffff');
 
-  // 8. CAD Plotter Wireframe (cannyEdges):
-  let cannySolidInner = '  <!-- CAD Plotter Wireframe & Toolpath Hairlines -->\n  <g id="plotter-cut-paths" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-linejoin="round">\n';
-  for (const layer of allVectorLayers) {
-    cannySolidInner += `    <path d="${layer.d}"/>\n`;
+  // 8. CAD Plotter Wireframe (cannyEdges): untrapped foreground paths (no 1px trap overlap or bg box)
+  const fgWireLayers = allVectorLayers.filter(l => !l.isBg);
+  const wireSourceLayers = fgWireLayers.length > 0 ? fgWireLayers : allVectorLayers;
+  const wirePaths = wireSourceLayers.map(l => l.rawD || l.d);
+  const cannySolidSvg = buildWireframeSvg(rawWidth, rawHeight, wirePaths, false, '#00d2ff', 1.2);
+  const cannyTransparentSvg = buildWireframeSvg(rawWidth, rawHeight, wirePaths, true, '#00d2ff', 1.2);
+
+  // 9. Sticker / Vinyl Die-Cut Contour & CutContour Offset (chromaticEdges):
+  let logoDieCutFg = null;
+  if (isTransparentLogo && exactAlphaMask) {
+    logoDieCutFg = exactAlphaMask;
+  } else {
+    const fgMask = new Uint8Array(totalPixels);
+    let fgCount = 0;
+    for (let p = 0; p < totalPixels; p++) {
+      const t = pixelTierMap[p];
+      if (t >= 0 && spotColors[t].hex.toLowerCase() !== bgHex.toLowerCase()) {
+        fgMask[p] = 1;
+        fgCount++;
+      }
+    }
+    const fgRatio = fgCount / Math.max(1, totalPixels);
+    logoDieCutFg = (fgRatio >= 0.015 && fgRatio <= 0.96)
+      ? fgMask
+      : extractPhotoForegroundMask(rawPixels, rawWidth, rawHeight);
   }
-  cannySolidInner += '  </g>\n';
+  const { mask: logoDieCutMask, width: logoDieW, height: logoDieH, pad: logoDiePad } =
+    computeDieCutParams(logoDieCutFg, rawWidth, rawHeight);
+  const logoDieCutPathD = compactSvgPathD(traceMaskToPathD(logoDieCutMask, logoDieW, logoDieH, {
+    optCurve: true,
+    alphaMax: 1.0,
+    optTolerance: 0.45,
+    turdSize: 36,
+    turnPolicy: 'minority'
+  }));
+  const logoDiePreviewLayers = effectiveFgReduced.length > 0 ? effectiveFgReduced : wireSourceLayers;
+  const chromaticSolidSvg = buildDieCutSvg(rawWidth, rawHeight, logoDieCutPathD, logoDiePreviewLayers, false, logoDiePad);
+  const chromaticTransparentSvg = buildDieCutSvg(rawWidth, rawHeight, logoDieCutPathD, logoDiePreviewLayers, true, logoDiePad);
 
-  let cannyTransparentInner = '  <!-- CAD Plotter Wireframe & Toolpath Hairlines -->\n  <g id="plotter-cut-paths" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-linejoin="round">\n';
-  for (const layer of effectiveFgLayers) {
-    cannyTransparentInner += `    <path d="${layer.d}"/>\n`;
-  }
-  cannyTransparentInner += '  </g>\n';
-
-  const cannySolidSvg = buildSvg(cannySolidInner, '#090d16');
-  const cannyTransparentSvg = buildSvg(cannyTransparentInner, null);
-
-  // 9. Color Registration Traps & Die-Cut Contours (chromaticEdges):
-  let chromaticSolidInner = '  <!-- Color Registration Contours & Die-Cut Proofs -->\n  <g id="registration-contours" fill="none" stroke-width="2.0" stroke-linejoin="round">\n';
-  for (const layer of allVectorLayers) {
-    chromaticSolidInner += `    <path stroke="${layer.color}" opacity="0.95" d="${layer.d}"/>\n`;
-  }
-  chromaticSolidInner += '  </g>\n';
-
-  let chromaticTransparentInner = '  <!-- Color Registration Contours & Die-Cut Proofs -->\n  <g id="registration-contours" fill="none" stroke-width="2.0" stroke-linejoin="round">\n';
-  for (const layer of effectiveFgLayers) {
-    chromaticTransparentInner += `    <path stroke="${layer.color}" opacity="0.95" d="${layer.d}"/>\n`;
-  }
-  chromaticTransparentInner += '  </g>\n';
-
-  const chromaticSolidSvg = buildSvg(chromaticSolidInner, '#090d16');
-  const chromaticTransparentSvg = buildSvg(chromaticTransparentInner, null);
-
-  // 10. Canva-Optimized Master SVG (<=5 focal solid colors preserving vivid accents + 3x3 despeckle)
+  // 10. Canva-Optimized Master SVG (<=4 focal solid colors preserving vivid accents + 3x3 despeckle)
   let canvaSourceLayers = allVectorLayers;
   if (spotColors.length > 4) {
     const canvaPalette = selectCanvaPalette(spotColors, 4);

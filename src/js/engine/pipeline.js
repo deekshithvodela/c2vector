@@ -5,9 +5,10 @@
  */
 
 import { resampleBicubic, bilateralDenoise, computeLuminance, rgbToHsv, hsvToRgb, computeCannyEdges } from './image-ops.js';
-import { computeOtsuThreshold, generateMonochromeMap, generateBridgeStencilMap, generateExactAlphaMask } from './tonal-studies.js';
+import { computeOtsuThreshold, generateMonochromeMap, generateCutStencilSourceMask, generateBridgeStencilMap, generateExactAlphaMask, extractPhotoForegroundMask, computeDieCutParams } from './tonal-studies.js';
 import { quantizePalette, consolidatePalette, selectCanvaPalette, mapPixelsToPaletteIndex, mapPixelsToPaletteLab, despeckleTierMap, computeToneMatchIndex, rgbToHex } from './quantizer.js';
-import { buildMasterSvg, buildStudySvg, buildMultiToneStudySvg, buildColorPosterizeSvg, buildSeamlessPixelMatchSvg, buildCanvaOptimizedSvg } from './bezier-tracer.js';
+import { buildMasterSvg, buildStudySvg, buildMultiToneStudySvg, buildColorPosterizeSvg, buildSeamlessPixelMatchSvg, buildCanvaOptimizedSvg, buildWireframeSvg, buildDieCutSvg, compactSvgPathD } from './bezier-tracer.js';
+import { traceCenterlinePaths } from './path-refiner.js';
 import { traceMaskToPathD } from './potrace.js';
 
 export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, options = {}, progressCallback = () => {}) {
@@ -92,7 +93,8 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   progressCallback({ step: 2, name: 'Monochrome, Posterize & Stencil Studies', pct: 35 });
   const otsuThreshold = computeOtsuThreshold(cleanPixels, targetHDWidth, targetHDHeight);
   const monoMap = generateMonochromeMap(cleanPixels, targetHDWidth, targetHDHeight, otsuThreshold);
-  const stencilMap = generateBridgeStencilMap(monoMap, targetHDWidth, targetHDHeight, 0, 0);
+  const stencilSourceMap = generateCutStencilSourceMask(cleanPixels, targetHDWidth, targetHDHeight, { isAchromaticArt, isTransparent });
+  const stencilMap = generateBridgeStencilMap(stencilSourceMap, targetHDWidth, targetHDHeight, { preserveFineDetail: isAchromaticArt });
 
   // Compute 4-Tone Grayscale Masks: #000000 (base), #4a4a4a, #a8a8a8, #ffffff (ignoring transparent pixels)
   const p4Colors = ['#000000', '#4a4a4a', '#a8a8a8', '#ffffff'];
@@ -170,7 +172,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
     const lum = computeLuminance(cleanPixels[i], cleanPixels[i + 1], cleanPixels[i + 2]);
     if (lum < 85 && a >= 128) {
       twoToneDarkMask[p] = 1;
-    } else if (lum < 195 || a >= 64) {
+    } else if (lum < 195) {
       twoToneMidMask[p] = 1;
     }
   }
@@ -198,15 +200,28 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
 
   // STEP 3: DEPTH ESTIMATION & HAIRLINE EDGES
   progressCallback({ step: 3, name: 'Canny Hairline Edges & Focus Depth Map', pct: 55 });
-  const cannyEdges = computeCannyEdges(cleanPixels, targetHDWidth, targetHDHeight, 20, 60);
+  const cannySourcePixels = isAchromaticArt
+    ? cleanPixels
+    : bilateralDenoise(cleanPixels, targetHDWidth, targetHDHeight, 2.2, 42.0);
+  const cannyEdges = computeCannyEdges(
+    cannySourcePixels,
+    targetHDWidth,
+    targetHDHeight,
+    isAchromaticArt ? 20 : 44,
+    isAchromaticArt ? 60 : 118
+  );
 
   // Sub-pixel Canny Hairline Edge Mask (excluding transparent pixels)
   const edgeMask = new Uint8Array(targetHDWidth * targetHDHeight);
   for (let i = 0; i < cannyEdges.length; i++) {
     if (cannyEdges[i] === 255 && cleanPixels[i * 4 + 3] >= 64) edgeMask[i] = 1;
   }
-  const cannySolidSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#38bdf8', '#090d16', edgeMask, { turdSize: 4 });
-  const cannyTransparentSvg = buildStudySvg(targetHDWidth, targetHDHeight, '#38bdf8', null, edgeMask, { turdSize: 4 });
+  const wireframePaths = traceCenterlinePaths(edgeMask, targetHDWidth, targetHDHeight, {
+    minLen: isAchromaticArt ? 8 : 16,
+    eps: isAchromaticArt ? 0.65 : 0.85
+  });
+  const cannySolidSvg = buildWireframeSvg(targetHDWidth, targetHDHeight, wireframePaths, false, '#00d2ff', 1.2);
+  const cannyTransparentSvg = buildWireframeSvg(targetHDWidth, targetHDHeight, wireframePaths, true, '#00d2ff', 1.2);
 
   // STEP 4: COLOR QUANTIZATION & TONE MATCH INDEX
   progressCallback({ step: 4, name: 'Color Quantization & Tone Match Index', pct: 75 });
@@ -401,15 +416,6 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   // Default substrate color for solid vector underlays
   const defaultSubstrate = isTransparent ? '#ffffff' : (palette[0] ? palette[0].hex : '#000000');
 
-  // Build Standalone Chromatic Edges Study SVG (Solid & Transparent)
-  let chromaticInner = '  <g id="chromatic-outlines" opacity="0.75">\n';
-  for (const edge of chromaticEdgePaths) {
-    chromaticInner += `    <!-- ${edge.name} -->\n    <path id="${edge.id}" fill="${edge.color}" fill-rule="evenodd" d="${edge.d}"/>\n`;
-  }
-  chromaticInner += '  </g>\n';
-  const chromaticSolidSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${targetHDWidth} ${targetHDHeight}" width="${targetHDWidth}" height="${targetHDHeight}">\n  <rect width="${targetHDWidth}" height="${targetHDHeight}" fill="#090d16"/>\n${chromaticInner}</svg>`;
-  const chromaticTransparentSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${targetHDWidth} ${targetHDHeight}" width="${targetHDWidth}" height="${targetHDHeight}">\n${chromaticInner}</svg>`;
-
   // Color Posterized Print Plate (8-10 Bold Graphic Color Fields)
   const posterColorPalette = quantizePalette(cleanPixels, 8);
   const posterIndices = mapPixelsToPaletteIndex(cleanPixels, posterColorPalette);
@@ -431,6 +437,32 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   const posterBaseColor = posterColorPalette[0] ? posterColorPalette[0].hex : '#000000';
   const posterColorSolidSvg = buildColorPosterizeSvg(targetHDWidth, targetHDHeight, posterLayers, posterBaseColor);
   const posterColorTransparentSvg = buildColorPosterizeSvg(targetHDWidth, targetHDHeight, posterLayers, null, silhouettePathD);
+
+  // Standalone Sticker / Vinyl Die-Cut Contour Artboard (chromaticEdges)
+  const dieCutFgMask = (isTransparent && exactAlphaMask)
+    ? exactAlphaMask
+    : extractPhotoForegroundMask(cleanPixels, targetHDWidth, targetHDHeight);
+  const { mask: dieCutMask, width: dieCutW, height: dieCutH, pad: dieCutPad, fgRatio: dieCutFgRatio } =
+    computeDieCutParams(dieCutFgMask, targetHDWidth, targetHDHeight);
+  const dieCutPathD = compactSvgPathD(traceMaskToPathD(dieCutMask, dieCutW, dieCutH, {
+    optCurve: true,
+    alphaMax: 1.0,
+    optTolerance: 0.45,
+    turdSize: 36,
+    turnPolicy: 'minority'
+  }));
+  // Reuse cached poster layers directly when transparent; mask out extracted studio backdrop when opaque
+  const dieCutPreviewLayers = (!isTransparent && dieCutFgRatio < 0.90)
+    ? posterLayers.map(layer => {
+        const clipped = new Uint8Array(layer.mask.length);
+        for (let i = 0; i < clipped.length; i++) {
+          if (layer.mask[i] && dieCutFgMask[i]) clipped[i] = 1;
+        }
+        return { ...layer, mask: clipped };
+      })
+    : posterLayers;
+  const chromaticSolidSvg = buildDieCutSvg(targetHDWidth, targetHDHeight, dieCutPathD, dieCutPreviewLayers, false, dieCutPad);
+  const chromaticTransparentSvg = buildDieCutSvg(targetHDWidth, targetHDHeight, dieCutPathD, dieCutPreviewLayers, true, dieCutPad);
 
   // Seamless Pixel-Match Vector (Anti-Grid Architecture)
   // 2D contiguous polygon boundary fusion & sub-pixel Potrace curve fitting
@@ -462,7 +494,7 @@ export async function runVectorizationPipeline(rawPixels, rawWidth, rawHeight, o
   const masterVibrantSolidSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, defaultSubstrate, null, masterOpts);
   const masterVibrantTransparentSvg = buildMasterSvg(targetHDWidth, targetHDHeight, vibrantPalette, tierMasks, chromaticEdgePaths, null, silhouettePathD, masterOpts);
 
-  // Canva-Optimized Master SVG (<=5 focal solid colors, CIELAB mapped, 3x3 despeckled, zero translucent glazes)
+  // Canva-Optimized Master SVG (<=4 focal solid colors, CIELAB mapped, 3x3 despeckled, zero translucent glazes)
   const canvaMax = Math.min(effectiveTiers, 4);
   const canvaCandidates = quantizePalette(cleanPixels, Math.max(canvaMax, 24), 0);
   const canvaPalette = selectCanvaPalette(canvaCandidates, canvaMax);

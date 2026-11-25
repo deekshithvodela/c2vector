@@ -3,12 +3,18 @@
  * Median-cut color clustering and CIELAB lightness monotonic calibration
  */
 
+const SRGB_TO_LINEAR = Float64Array.from({ length: 256 }, (_, i) => {
+  const c = i / 255;
+  return c > 0.04045 ? Math.pow((c + 0.055) / 1.055, 2.4) : c / 12.92;
+});
+
 export function rgbToLab(r, g, b) {
-  // sRGB to Linear RGB
-  let lr = r / 255, lg = g / 255, lb = b / 255;
-  lr = lr > 0.04045 ? Math.pow((lr + 0.055) / 1.055, 2.4) : lr / 12.92;
-  lg = lg > 0.04045 ? Math.pow((lg + 0.055) / 1.055, 2.4) : lg / 12.92;
-  lb = lb > 0.04045 ? Math.pow((lb + 0.055) / 1.055, 2.4) : lb / 12.92;
+  const ri = Math.min(255, Math.max(0, Math.round(r)));
+  const gi = Math.min(255, Math.max(0, Math.round(g)));
+  const bi = Math.min(255, Math.max(0, Math.round(b)));
+  const lr = SRGB_TO_LINEAR[ri];
+  const lg = SRGB_TO_LINEAR[gi];
+  const lb = SRGB_TO_LINEAR[bi];
 
   // Linear RGB to XYZ (D65)
   let x = lr * 0.4124 + lg * 0.3576 + lb * 0.1805;
@@ -69,6 +75,10 @@ export function quantizePalette(pixels, maxColors = 64, minBoxRange = null) {
     if (pixels[i + 3] > 64) { // Ignore fully transparent
       points.push([pixels[i], pixels[i + 1], pixels[i + 2]]);
     }
+  }
+
+  if (points.length === 0) {
+    return [];
   }
 
   // Box splitting
@@ -217,7 +227,7 @@ export function consolidatePalette(palette, options = {}) {
 }
 
 /**
- * Perceptual Focal-Accent Canva Palette Selection (<= 5 editable solid colors).
+ * Perceptual Focal-Accent Canva Palette Selection (<= 4 editable solid colors).
  * Anchors darkest/lightest structural contrast, then picks remaining slots using
  * Max-Min Delta E x Chroma Focal Scoring so vivid accents (e.g. red eyes, cobalt stripes)
  * are preserved instead of being swallowed by large neutral backgrounds.
@@ -384,8 +394,12 @@ export function mapPixelsToPaletteIndex(pixels, palette) {
  * Computes Tone Match Index (TMI) diagnostics & rank correlation
  */
 export function computeToneMatchIndex(sourcePalette, vibrantPalette) {
+  const n = Math.min(sourcePalette?.length || 0, vibrantPalette?.length || 0);
+  if (n === 0) {
+    return { pearsonR: 1.0, spearmanRho: 1.0, inversions: 0, status: 'MONOTONIC_PASS' };
+  }
   let inversions = 0;
-  for (let i = 0; i < sourcePalette.length - 1; i++) {
+  for (let i = 0; i < n - 1; i++) {
     if (vibrantPalette[i].L > vibrantPalette[i + 1].L) {
       inversions++;
     }
@@ -393,7 +407,6 @@ export function computeToneMatchIndex(sourcePalette, vibrantPalette) {
 
   // Pearson correlation of lightness
   let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
-  const n = sourcePalette.length;
 
   for (let i = 0; i < n; i++) {
     const x = sourcePalette[i].L;

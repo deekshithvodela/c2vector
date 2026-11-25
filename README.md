@@ -64,7 +64,7 @@ Decomposes input graphics into production-ready manufacturing layers across **14
 
 ### 4. 📄 Master Scalable Vector PDF Suite & Dynamic Naming
 - In-browser compilation using `jsPDF` and `svg2pdf.js`.
-- Exports an Executive Cover Page plus all vector artboards into a single **14-page master PDF document** (`<source>_<mode>_master_suite_c2vector_DV.pdf`), with consistent dynamic filenames for individual SVGs and scaled PNGs (`@1x`, `@2x`, `@4x`).
+- Exports an Executive Cover Page plus all vector artboards into a single **15-page master PDF document** (`<source>_<mode>_master_suite_c2vector_DV.pdf`), with consistent dynamic filenames for individual SVGs and scaled PNGs (`@1x`, `@2x`, `@4x`).
 - **100% Pure Vector Bézier Streams:** Infinite print scalability with strictly **0 raster compression artifacts**.
 
 ### 5. 🔍 Interactive 360° Native ViewBox Pan & Zoom Workbench
@@ -146,7 +146,7 @@ c2vector/
 │   │   │   ├── tonal-studies.js # Otsu 1-bit, exact alpha mask, stencil & dual-pass line art
 │   │   │   └── worker.js        # Background Web Worker sandbox
 │   │   └── export/
-│   │       ├── pdf-builder.js   # 14-page pure vector PDF suite compiler
+│   │       ├── pdf-builder.js   # 15-page pure vector PDF suite compiler
 │   │       └── png-exporter.js  # OffscreenCanvas 1x/2x/4x PNG raster exporter
 │   └── vendor/                  # Bundled engine vendor modules
 ├── index.html                   # Primary Studio Workbench application
@@ -221,6 +221,16 @@ To deploy the production-ready Progressive Web App to GitHub Pages (`https://dee
 ---
 
 ## 📊 Quality & Production Standards (ISO/IEC 25010)
+
+### Production‑Readiness Checklist
+- **Linting** – `npm run lint` verifies no `eval`/`new Function` usage and checks for button types.
+- **Content‑Security‑Policy** – CSP meta tag injected via Vite plugin; verified in `dist/index.html`.
+- **CI Workflow** – Split `build` and `deploy` jobs with artifact upload to avoid race conditions.
+- **Privacy Scan** – `PROJECT_STATE.md` sanitized; no absolute developer paths leaked.
+- **Playwright Accessibility Audits** – ARIA/WCAG baseline checks pass on all pages.
+- **Git History Hygiene** – `.gitignore` protects `dist/`, `archive/`, and documentation files.
+- **GitHub Pages Deployment** – Verified live site `https://deekshithvodela.github.io/c2vector/` returns HTTP 200 and includes CSP header.
+
 
 - **Functional Correctness:** 41 / 41 high-signal composite automated Playwright, geometry, transparency, and privacy tests passing (`npm test`).
 - **7-Vector Privacy & Leak Hygiene:** Verified 0 exposed local developer paths, 0 internal agent metadata paths, 0 private IPs, 0 hardcoded secrets, and 0 unstripped sourcemaps across both `src/` and compiled `dist/`.

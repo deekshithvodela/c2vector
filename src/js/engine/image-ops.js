@@ -126,6 +126,14 @@ export function bilateralDenoise(srcData, width, height, spatialSigma = 1.5, col
     const yOffset = y * width;
     for (let x = 0; x < width; x++) {
       const centerIdx = (yOffset + x) * 4;
+      const cA = srcData[centerIdx + 3];
+      if (cA < 32) {
+        dstData[centerIdx] = srcData[centerIdx];
+        dstData[centerIdx + 1] = srcData[centerIdx + 1];
+        dstData[centerIdx + 2] = srcData[centerIdx + 2];
+        dstData[centerIdx + 3] = cA;
+        continue;
+      }
       const cR = srcData[centerIdx];
       const cG = srcData[centerIdx + 1];
       const cB = srcData[centerIdx + 2];
@@ -145,6 +153,7 @@ export function bilateralDenoise(srcData, width, height, spatialSigma = 1.5, col
           if (distSq > radius * radius) continue;
 
           const nIdx = (nyOffset + nx) * 4;
+          if (srcData[nIdx + 3] < 32) continue; // Never bleed transparent matte RGB into opaque edges
           const nR = srcData[nIdx];
           const nG = srcData[nIdx + 1];
           const nB = srcData[nIdx + 2];
@@ -160,10 +169,16 @@ export function bilateralDenoise(srcData, width, height, spatialSigma = 1.5, col
         }
       }
 
-      dstData[centerIdx] = Math.round(accR / totalW);
-      dstData[centerIdx + 1] = Math.round(accG / totalW);
-      dstData[centerIdx + 2] = Math.round(accB / totalW);
-      dstData[centerIdx + 3] = srcData[centerIdx + 3];
+      if (totalW > 0) {
+        dstData[centerIdx] = Math.round(accR / totalW);
+        dstData[centerIdx + 1] = Math.round(accG / totalW);
+        dstData[centerIdx + 2] = Math.round(accB / totalW);
+      } else {
+        dstData[centerIdx] = cR;
+        dstData[centerIdx + 1] = cG;
+        dstData[centerIdx + 2] = cB;
+      }
+      dstData[centerIdx + 3] = cA;
     }
   }
 

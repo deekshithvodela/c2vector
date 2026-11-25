@@ -5,6 +5,7 @@
 
 import { compileMasterVectorPdf } from './export/pdf-builder.js';
 import { exportSvgToPng } from './export/png-exporter.js';
+import { refineSvgPathD } from './engine/path-refiner.js';
 
 // Artboard metadata definitions
 const ARTBOARD_METADATA = {
@@ -20,7 +21,7 @@ const ARTBOARD_METADATA = {
   },
   canvaOptimized: {
     title: 'Canva-Optimized Master Vector (≤4 Editable Colors)',
-    subtitle: 'Unlocks Canva Color Swatches, Flat SVG 1.1 & Chunked Subpaths',
+    subtitle: 'Unlocks Canva Color Swatches, Flat SVG 1.1 & Hole-Safe Paths',
     filename: 'master_canva_optimized.svg'
   },
   posterizeColor: {
@@ -65,18 +66,18 @@ const ARTBOARD_METADATA = {
   },
   stencil: {
     title: 'Bridge-Connected Laser Cut Stencil',
-    subtitle: 'Island-Bridged Laser & Plotter Vector Cut Paths',
+    subtitle: 'Topologically Island-Bridged Laser & Plotter Cut Paths',
     filename: 'bridge_cut_stencil.svg'
   },
   cannyEdges: {
-    title: 'Canny Sub-Pixel Hairline Edges (1-px Outlines)',
-    subtitle: '1-px Non-Maximum Suppression Ridges',
-    filename: 'canny_hairline_edges.svg'
+    title: 'CAD Plotter Wireframe (1-Pass Hairlines)',
+    subtitle: 'Single-Line Centerline Vector Strokes for CNC, Laser & Plotters',
+    filename: 'canny_hairline_wireframe.svg'
   },
   chromaticEdges: {
-    title: 'Translucent Chromatic Contours (70%-80% Glaze)',
-    subtitle: '70%–80% Opacity Glaze (Zero Flat Black Ink)',
-    filename: 'translucent_chromatic_contours.svg'
+    title: 'Sticker Die-Cut Contour (#CutContour)',
+    subtitle: 'Distance-Expanded Carrier Cushion, Magenta #CutContour & Crop Marks',
+    filename: 'sticker_die_cut_contour.svg'
   }
 };
 
@@ -94,7 +95,7 @@ const LOGO_ARTBOARD_METADATA = {
   },
   canvaOptimized: {
     title: 'Canva-Optimized Master Logo (≤4 Editable Colors)',
-    subtitle: 'Unlocks Canva Color Swatches, Flat SVG 1.1 & Chunked Subpaths',
+    subtitle: 'Unlocks Canva Color Swatches, Flat SVG 1.1 & Hole-Safe Paths',
     filename: 'logo_canva_optimized.svg'
   },
   posterizeColor: {
@@ -139,18 +140,18 @@ const LOGO_ARTBOARD_METADATA = {
   },
   stencil: {
     title: 'Bridge-Connected Stencil (Laser & Vinyl Plotter)',
-    subtitle: 'Island-Bridged Cut Ribs to Prevent Internal Loop Dropouts',
+    subtitle: 'Topologically Bridged Islands to Prevent Internal Loop Dropouts',
     filename: 'logo_cut_stencil.svg'
   },
   cannyEdges: {
-    title: 'CAD Plotter Wireframe (Hairline Cut Paths)',
-    subtitle: 'Luminous Technical Outlines on Obsidian Plate for CNC & Vinyl Cutters',
-    filename: 'logo_plotter_hairline_cut.svg'
+    title: 'CAD Plotter Wireframe (Untrapped Cut Paths)',
+    subtitle: 'Clean Single-Pass Spot Outlines Without 1px Overlap Traps',
+    filename: 'logo_plotter_wireframe.svg'
   },
   chromaticEdges: {
-    title: 'Color Registration Traps & Die-Cut Contours',
-    subtitle: 'Color-Coded Spot Registration Boundaries and Overlap Proofs',
-    filename: 'logo_chromatic_registration.svg'
+    title: 'Sticker Die-Cut Contour (#CutContour)',
+    subtitle: 'Expanded Vinyl Carrier Offset, Magenta #CutContour & Registration Marks',
+    filename: 'logo_die_cut_contour.svg'
   }
 };
 
@@ -173,10 +174,39 @@ let areEdgesVisible = true;
 let currentSourceFileName = 'c2vector_artwork';
 let currentSourceImagePayload = null;
 let currentStrokeWeight = 0;
+let currentRefineStrength = 0;
+let refineRafId = null;
+let refineSyncTimer = null;
 let currentColorBudget = 8;
 let pendingColorBudget = 8;
 let originalSvgsSnapshot = null;
 let activeSoloPath = null;
+let preSoloVisibility = null;
+const origPathDMap = new WeakMap();
+
+function cancelPendingRefine() {
+  if (refineRafId !== null) {
+    cancelAnimationFrame(refineRafId);
+    refineRafId = null;
+  }
+  if (refineSyncTimer !== null) {
+    clearTimeout(refineSyncTimer);
+    refineSyncTimer = null;
+  }
+}
+
+function flushPendingRefine() {
+  if (refineRafId !== null) {
+    cancelAnimationFrame(refineRafId);
+    refineRafId = null;
+    const val = parseInt(refineStrokeSlider?.value || '0', 10);
+    applyRefineStroke(val, false);
+  }
+  if (refineSyncTimer !== null) {
+    clearTimeout(refineSyncTimer);
+    refineSyncTimer = null;
+  }
+}
 
 // DOM References
 const dropzone = document.getElementById('dropzone');
@@ -225,6 +255,8 @@ const presetChips = document.querySelectorAll('.preset-chip');
 const strokeWeightSlider = document.getElementById('strokeWeightSlider');
 const strokeWeightVal = document.getElementById('strokeWeightVal');
 const btnResetStroke = document.getElementById('btnResetStroke');
+const refineStrokeSlider = document.getElementById('refineStrokeSlider');
+const btnResetRefine = document.getElementById('btnResetRefine');
 const studioLayersList = document.getElementById('studioLayersList');
 const btnResetLayers = document.getElementById('btnResetLayers');
 
@@ -503,6 +535,7 @@ fileInput?.addEventListener('change', (e) => {
   if (file) {
     processImageFile(file, currentEngineMode);
   }
+  e.target.value = '';
 });
 
 logoFileInput?.addEventListener('change', (e) => {
@@ -510,6 +543,7 @@ logoFileInput?.addEventListener('change', (e) => {
   if (file) {
     processImageFile(file, 'logo');
   }
+  e.target.value = '';
 });
 
 btnSample?.addEventListener('click', (e) => {
@@ -620,9 +654,9 @@ function showProgress() {
   updateProgress(1, 'Analyzing Photo Resolution...', 5);
   // Reset badges
   for (let i = 1; i <= 6; i++) {
-    const badge = document.getElementById(`step${i}`);
+    const badge = document.getElementById(`stepBadge${i}`);
     if (badge) {
-      badge.classList.remove('active', 'done');
+      badge.classList.remove('active', 'complete');
     }
   }
 }
@@ -634,16 +668,16 @@ function updateProgress(step, name, pct) {
   if (progressBarAria) progressBarAria.setAttribute('aria-valuenow', pct);
 
   for (let i = 1; i <= 6; i++) {
-    const badge = document.getElementById(`step${i}`);
+    const badge = document.getElementById(`stepBadge${i}`);
     if (!badge) continue;
     if (i < step) {
       badge.classList.remove('active');
-      badge.classList.add('done');
+      badge.classList.add('complete');
     } else if (i === step) {
       badge.classList.add('active');
-      badge.classList.remove('done');
+      badge.classList.remove('complete');
     } else {
-      badge.classList.remove('active', 'done');
+      badge.classList.remove('active', 'complete');
     }
   }
 }
@@ -810,6 +844,12 @@ function displayActiveArtboard() {
   const svgStr = currentResults.svgs[activeArtboard];
   if (!svgStr) return;
 
+  activeSoloPath = null;
+  preSoloVisibility = null;
+  cancelPendingRefine();
+  currentRefineStrength = 0;
+  if (refineStrokeSlider) refineStrokeSlider.value = '0';
+
   viewport.innerHTML = svgStr;
   initializeBaseViewBox();
 
@@ -829,7 +869,7 @@ function displayActiveArtboard() {
   if (metricSize) metricSize.textContent = `${kbSize} KB`;
 
   // Update Edge Opacity control state (greying out when inactive to eliminate layout shift)
-  const hasContours = ['masterVibrant', 'masterFaithful', 'chromaticEdges'].includes(activeArtboard);
+  const hasContours = ['masterVibrant', 'masterFaithful'].includes(activeArtboard);
   if (edgeOpacityControl) {
     edgeOpacityControl.classList.toggle('disabled', !hasContours);
     edgeOpacityControl.setAttribute('aria-disabled', (!hasContours).toString());
@@ -904,7 +944,6 @@ btnToggleEdges?.addEventListener('click', () => {
   btnToggleEdges.textContent = areEdgesVisible ? 'Visible' : 'Hidden';
   updateContourOpacityInViewport();
   syncContourOpacityInMemory();
-  syncContourOpacityInMemory();
 });
 
 // --------------------------------------------------------------------------
@@ -931,6 +970,7 @@ function colorToHex(colorStr) {
 
 function syncViewportSvgToMemory() {
   if (!currentResults || !viewport) return;
+  flushPendingRefine();
   const viewportSvg = viewport.querySelector('svg');
   if (viewportSvg) {
     const clone = viewportSvg.cloneNode(true);
@@ -956,8 +996,8 @@ function getActiveSvgPaths() {
 
 function populateStudioLayersList() {
   if (!studioLayersList || !viewport) return;
+  const prevScrollTop = studioLayersList.scrollTop;
   studioLayersList.innerHTML = '';
-  activeSoloPath = null;
 
   const paths = getActiveSvgPaths();
   if (paths.length === 0) {
@@ -980,8 +1020,9 @@ function populateStudioLayersList() {
   });
 
   const colorGroups = Array.from(groupMap.values());
+  const displayGroups = [...colorGroups].reverse();
 
-  colorGroups.forEach((group, idx) => {
+  displayGroups.forEach((group, idx) => {
     const hexColor = group.hex;
     const groupPaths = group.paths;
     const layerId = groupPaths[0].id || `color-group-${idx + 1}`;
@@ -1009,27 +1050,39 @@ function populateStudioLayersList() {
 
     visBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (activeSoloPath) {
+        activeSoloPath = null;
+        preSoloVisibility = null;
+      }
       const nowHidden = groupPaths.every(p => p.style.display === 'none');
       groupPaths.forEach(p => { p.style.display = nowHidden ? '' : 'none'; });
       item.classList.toggle('is-hidden', !nowHidden);
       visBtn.title = !nowHidden ? 'Show layer' : 'Hide layer';
       visBtn.innerHTML = !nowHidden ? eyeHiddenSvg : eyeVisibleSvg;
+      populateStudioLayersList();
       syncViewportSvgToMemory();
     });
 
     // Solo button (S)
     const soloBtn = document.createElement('button');
     soloBtn.type = 'button';
-    soloBtn.className = 'layer-solo-btn' + (activeSoloPath === hexColor ? ' active' : '');
-    soloBtn.title = 'Solo isolate this color layer';
+    const isSoloActive = activeSoloPath === hexColor;
+    soloBtn.className = 'layer-solo-btn' + (isSoloActive ? ' active' : '');
+    soloBtn.title = isSoloActive ? 'Exit solo & restore active layers' : 'Solo isolate this color layer';
     soloBtn.setAttribute('aria-label', `Solo isolate layer ${idx + 1}`);
     soloBtn.textContent = 'S';
     soloBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (activeSoloPath === hexColor) {
+        paths.forEach(p => {
+          p.style.display = preSoloVisibility && preSoloVisibility.has(p) ? preSoloVisibility.get(p) : '';
+        });
         activeSoloPath = null;
-        paths.forEach(p => { p.style.display = ''; });
+        preSoloVisibility = null;
       } else {
+        if (!preSoloVisibility) {
+          preSoloVisibility = new Map(paths.map(p => [p, p.style.display || '']));
+        }
         activeSoloPath = hexColor;
         const activeSet = new Set(groupPaths);
         paths.forEach(p => { p.style.display = activeSet.has(p) ? '' : 'none'; });
@@ -1105,11 +1158,19 @@ function populateStudioLayersList() {
     upBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       let moved = false;
-      for (let k = groupPaths.length - 1; k >= 0; k--) {
-        const p = groupPaths[k];
-        if (p.nextElementSibling && !groupPaths.includes(p.nextElementSibling)) {
-          p.parentNode.insertBefore(p.nextElementSibling, p);
-          moved = true;
+      const groupAbove = idx > 0 ? displayGroups[idx - 1] : null;
+      const anchor = groupAbove ? groupAbove.paths[groupAbove.paths.length - 1] : null;
+      if (anchor && groupPaths.every(p => p.parentNode === anchor.parentNode)) {
+        const ref = anchor.nextSibling;
+        groupPaths.forEach(p => anchor.parentNode.insertBefore(p, ref));
+        moved = true;
+      } else {
+        for (let k = groupPaths.length - 1; k >= 0; k--) {
+          const p = groupPaths[k];
+          if (p.nextElementSibling && !groupPaths.includes(p.nextElementSibling)) {
+            p.parentNode.insertBefore(p.nextElementSibling, p);
+            moved = true;
+          }
         }
       }
       if (moved) {
@@ -1128,11 +1189,25 @@ function populateStudioLayersList() {
     downBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       let moved = false;
-      for (let k = 0; k < groupPaths.length; k++) {
-        const p = groupPaths[k];
-        if (p.previousElementSibling && !groupPaths.includes(p.previousElementSibling)) {
-          p.parentNode.insertBefore(p, p.previousElementSibling);
-          moved = true;
+      const groupBelow = idx < displayGroups.length - 1 ? displayGroups[idx + 1] : null;
+      const anchor = groupBelow ? groupBelow.paths[0] : null;
+      if (anchor && groupPaths.every(p => p.parentNode === anchor.parentNode)) {
+        groupPaths.forEach(p => anchor.parentNode.insertBefore(p, anchor));
+        moved = true;
+      } else {
+        for (let k = 0; k < groupPaths.length; k++) {
+          const p = groupPaths[k];
+          const prev = p.previousElementSibling;
+          if (
+            prev &&
+            prev.tagName?.toLowerCase() === 'path' &&
+            prev.id !== 'logo-silhouette-base' &&
+            prev.id !== 'subject-silhouette-base' &&
+            !groupPaths.includes(prev)
+          ) {
+            p.parentNode.insertBefore(p, prev);
+            moved = true;
+          }
         }
       }
       if (moved) {
@@ -1163,6 +1238,8 @@ function populateStudioLayersList() {
     item.appendChild(actionsDiv);
     studioLayersList.appendChild(item);
   });
+
+  studioLayersList.scrollTop = prevScrollTop;
 }
 
 function applyStrokeWeight(val, shouldSync = true) {
@@ -1196,6 +1273,23 @@ function applyStrokeWeight(val, shouldSync = true) {
       p.setAttribute('stroke-linecap', 'round');
       p.setAttribute('paint-order', 'stroke fill');
     }
+  });
+
+  if (shouldSync) {
+    syncViewportSvgToMemory();
+  }
+}
+
+function applyRefineStroke(val, shouldSync = true) {
+  currentRefineStrength = val;
+  const paths = getActiveSvgPaths();
+  paths.forEach(p => {
+    if (!origPathDMap.has(p)) {
+      origPathDMap.set(p, p.getAttribute('d') || '');
+    }
+    const origD = origPathDMap.get(p);
+    if (!origD) return;
+    p.setAttribute('d', val <= 0 ? origD : refineSvgPathD(origD, val, p));
   });
 
   if (shouldSync) {
@@ -1249,6 +1343,32 @@ strokeWeightSlider?.addEventListener('input', (e) => {
 btnResetStroke?.addEventListener('click', () => {
   if (strokeWeightSlider) strokeWeightSlider.value = '0';
   applyStrokeWeight(0);
+});
+
+refineStrokeSlider?.addEventListener('input', (e) => {
+  const val = parseInt(e.target.value, 10);
+  if (refineRafId !== null) cancelAnimationFrame(refineRafId);
+  refineRafId = requestAnimationFrame(() => {
+    refineRafId = null;
+    applyRefineStroke(val, false);
+  });
+  if (refineSyncTimer !== null) clearTimeout(refineSyncTimer);
+  refineSyncTimer = setTimeout(() => {
+    refineSyncTimer = null;
+    syncViewportSvgToMemory();
+  }, 150);
+});
+
+refineStrokeSlider?.addEventListener('change', (e) => {
+  const val = parseInt(e.target.value, 10);
+  cancelPendingRefine();
+  applyRefineStroke(val, true);
+});
+
+btnResetRefine?.addEventListener('click', () => {
+  cancelPendingRefine();
+  if (refineStrokeSlider) refineStrokeSlider.value = '0';
+  applyRefineStroke(0, true);
 });
 
 btnResetLayers?.addEventListener('click', () => {
@@ -1462,6 +1582,8 @@ tabNav?.addEventListener('click', (e) => {
 
   const targetArtboard = btn.getAttribute('data-artboard');
   if (!targetArtboard || !currentResults?.svgs[targetArtboard]) return;
+
+  syncViewportSvgToMemory();
 
   tabNav.querySelectorAll('.tab-btn').forEach(b => {
     b.classList.remove('active');
@@ -1689,25 +1811,34 @@ btnDownloadPdf?.addEventListener('click', async () => {
 btnDownloadAllSvg?.addEventListener('click', async () => {
   if (!currentResults) return;
   syncViewportSvgToMemory();
-  const keys = Object.keys(currentResults.svgs);
+  const svgsSnapshot = { ...currentResults.svgs };
+  const keys = Object.keys(svgsSnapshot);
+  const origHtml = btnDownloadAllSvg.innerHTML;
+  btnDownloadAllSvg.disabled = true;
 
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i];
-    const filename = getDynamicDownloadFilename(key, 'svg');
-    const rawSvg = currentResults.svgs[key];
-    if (!rawSvg) continue;
-    const svgStr = formatDownloadableSvg(rawSvg);
+  try {
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const filename = getDynamicDownloadFilename(key, 'svg');
+      const rawSvg = svgsSnapshot[key];
+      if (!rawSvg) continue;
+      btnDownloadAllSvg.textContent = `Downloading ${i + 1}/${keys.length}...`;
+      const svgStr = formatDownloadableSvg(rawSvg);
 
-    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    await new Promise(r => setTimeout(r, 200));
+      const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      await new Promise(r => setTimeout(r, 200));
+    }
+  } finally {
+    btnDownloadAllSvg.disabled = false;
+    btnDownloadAllSvg.innerHTML = origHtml;
   }
 });
 

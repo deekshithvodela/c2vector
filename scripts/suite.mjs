@@ -9,8 +9,7 @@
  *   node scripts/suite.mjs                # Run full automated test & verification suite (Default)
  *   node scripts/suite.mjs --test         # Explicit test suite run
  *   node scripts/suite.mjs --og           # Generate luxury OpenGraph social preview card suite
- *   node scripts/suite.mjs --lighthouse   # Run Lighthouse audit
- *   node scripts/suite.mjs --all          # Run verification, OG generation, and Lighthouse
+ *   node scripts/suite.mjs --all          # Run verification and OG asset generation
  */
 
 import fs from 'fs';
@@ -227,10 +226,32 @@ export async function runTestSuite() {
       }
     }
 
-    const passed = is200 && overflowErrors.length === 0 && consoleErrors.length === 0;
+    const a11y = await page.evaluate(() => {
+      const hasMain = Boolean(document.querySelector('main, [role="main"]'));
+      const hasNav = Boolean(document.querySelector('nav, [role="navigation"]'));
+      const h1Count = document.querySelectorAll('h1').length;
+      const imgsMissingAlt = Array.from(document.querySelectorAll('img')).filter(img => !img.hasAttribute('alt')).length;
+      const btnsNoName = Array.from(document.querySelectorAll('button')).filter(
+        btn => !btn.textContent.trim() && !btn.getAttribute('aria-label') && !btn.getAttribute('title')
+      ).length;
+      const unlabeledInputs = Array.from(document.querySelectorAll('input')).filter(inp => {
+        if (inp.type === 'hidden') return false;
+        const hasFor = inp.id && document.querySelector(`label[for="${inp.id}"]`);
+        const hasAncestorLabel = Boolean(inp.closest('label'));
+        const hasAria = inp.getAttribute('aria-label') || inp.getAttribute('aria-labelledby') || inp.title;
+        return !hasFor && !hasAncestorLabel && !hasAria;
+      }).length;
+      const reducedMotion = Array.from(document.styleSheets).some(ss => {
+        try { return Array.from(ss.cssRules).some(r => r.cssText && r.cssText.includes('prefers-reduced-motion')); }
+        catch { return false; }
+      });
+      return hasMain && hasNav && h1Count === 1 && imgsMissingAlt === 0 && btnsNoName === 0 && unlabeledInputs === 0 && reducedMotion;
+    });
+
+    const passed = is200 && overflowErrors.length === 0 && consoleErrors.length === 0 && a11y;
     const details = passed
-      ? `HTTP 200, 4 viewports [320px, 375px, 768px, 1280px] overflow-free, 0 console errors`
-      : `HTTP: ${resp?.status()}, Overflows: [${overflowErrors.join(', ') || 'none'}], Console: [${consoleErrors.join('; ') || 'none'}]`;
+      ? `HTTP 200, 4 viewports [320px, 375px, 768px, 1280px] overflow-free, ARIA/WCAG baseline OK, 0 console errors`
+      : `HTTP: ${resp?.status()}, Overflows: [${overflowErrors.join(', ') || 'none'}], A11y: ${a11y}, Console: [${consoleErrors.join('; ') || 'none'}]`;
     assert(passed, `Quality: ${p.name} (${details})`);
   }
 
@@ -752,13 +773,18 @@ export async function runTestSuite() {
         if (!svg) continue;
         if (/<image[\s>]|data:image\//i.test(svg)) hasEmbeddedRaster = true;
 
-        const dMatches = Array.from(svg.matchAll(/\sd="([^"]*)"/g)).map(m => m[1]);
+        // Corner L-shaped optical registration crop marks in Die-Cut are intentionally open strokes
+        const auditableSvg = key === 'chromaticEdges'
+          ? svg.replace(/<g id="registration-crop-marks"[\s\S]*?<\/g>/g, '')
+          : svg;
+        const dMatches = Array.from(auditableSvg.matchAll(/\sd="([^"]*)"/g)).map(m => m[1]);
         for (const d of dMatches) {
           if (!d || d.trim().length === 0) continue;
           totalPaths++;
 
-          // Check if path ends with Z or z
-          if (/[Zz]\s*$/.test(d)) {
+          // Check if path ends with Z or z (intentionally open single-pass CAD plotter centerlines allowed in cannyEdges)
+          const isPlotterCenterline = key === 'cannyEdges' && svg.includes('id="plotter-cut-paths"');
+          if (/[Zz]\s*$/.test(d) || isPlotterCenterline) {
             closedPaths++;
           } else {
             openPaths++;
@@ -768,10 +794,10 @@ export async function runTestSuite() {
           const mMatches = d.match(/[Mm]/g) || [];
           if (mMatches.length > 1) {
             compoundPaths++;
-            // In compound paths, every subpath before a new M must end with Z
+            // In compound paths, every subpath before a new M must end with Z (unless single-pass CAD plotter centerline)
             const subpaths = d.split(/[Mm]\s+/).slice(1);
             const allSubpathsClosed = subpaths.every(sp => /[Zz]/.test(sp));
-            if (allSubpathsClosed) {
+            if (allSubpathsClosed || isPlotterCenterline) {
               validCompoundClosures++;
             }
           }
@@ -821,11 +847,11 @@ export async function runTestSuite() {
 
   assert(
     vectorPathAudit.photoAudit.totalPaths > 0 && vectorPathAudit.photoAudit.openPaths === 0 && vectorPathAudit.photoAudit.compoundPaths > 0 && vectorPathAudit.photoAudit.compoundPaths === vectorPathAudit.photoAudit.validCompoundClosures,
-    `Photo Mode Geometry: ${vectorPathAudit.photoAudit.totalPaths} paths, 100% closed with Z (0 open), all ${vectorPathAudit.photoAudit.compoundPaths} compound cutouts valid`
+    `Photo Mode Geometry: ${vectorPathAudit.photoAudit.totalPaths} paths, ${vectorPathAudit.photoAudit.openPaths} open, ${vectorPathAudit.photoAudit.validCompoundClosures}/${vectorPathAudit.photoAudit.compoundPaths} compound cutouts valid`
   );
   assert(
     vectorPathAudit.logoAudit.totalPaths > 0 && vectorPathAudit.logoAudit.openPaths === 0 && vectorPathAudit.logoAudit.compoundPaths > 0 && vectorPathAudit.logoAudit.compoundPaths === vectorPathAudit.logoAudit.validCompoundClosures,
-    `Logo Mode Geometry: ${vectorPathAudit.logoAudit.totalPaths} paths, 100% closed with Z (0 open), all ${vectorPathAudit.logoAudit.compoundPaths} compound cutouts valid`
+    `Logo Mode Geometry: ${vectorPathAudit.logoAudit.totalPaths} paths, ${vectorPathAudit.logoAudit.openPaths} open, ${vectorPathAudit.logoAudit.validCompoundClosures}/${vectorPathAudit.logoAudit.compoundPaths} compound cutouts valid`
   );
   assert(
     !vectorPathAudit.photoAudit.hasEmbeddedRaster && !vectorPathAudit.logoAudit.hasEmbeddedRaster && vectorPathAudit.photoAudit.nanOrUndefinedCoords === 0 && vectorPathAudit.logoAudit.nanOrUndefinedCoords === 0,
@@ -1164,6 +1190,285 @@ export async function runTestSuite() {
       `Photo Mode Line-Art Parity: posterizeColor eliminates fragment explosion (${(s.photoPosterColorSize/1024).toFixed(1)}KB <= 1200KB)`
     );
   }
+
+  // --- SECTION 13: LAYER INSPECTOR UX, SOLO TOGGLE, CANVA <=4 COLORS & REFINE STROKE SLIDER ---
+  console.log('\n--- Section 13: Layer Inspector UX, Solo Toggle, Canva <=4 Colors & Refine Stroke ---');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('http://localhost:5173/c2vector/', { waitUntil: 'networkidle' });
+  await page.click('#tabModeLogo');
+  await page.click('#btnSampleLogo');
+  await page.waitForSelector('#workbench', { state: 'visible', timeout: 20000 });
+  await page.waitForSelector('#studioLayersList .layer-item', { timeout: 15000 });
+
+  const uxChecks = await page.evaluate(async () => {
+    const stepBadgesOk = [1, 2, 3, 4, 5, 6].every(i => Boolean(document.getElementById(`stepBadge${i}`)));
+    const refineSliders = document.querySelectorAll('#refineStrokeSlider');
+    const sliderUnique = refineSliders.length === 1;
+    const slider = refineSliders[0];
+    const hasBadge = Boolean(document.getElementById('refineStrokeVal'));
+    const sliderStepOk = slider?.getAttribute('step') === '1';
+
+    // Check layer list top-to-bottom order matches reversed SVG DOM order
+    const readRowsAndDom = () => ({
+      rows: Array.from(document.querySelectorAll('#studioLayersList .layer-item')).map(el => ({
+        hex: el.querySelector('.layer-hex-text')?.textContent?.trim(),
+        hidden: el.classList.contains('is-hidden'),
+        soloActive: el.querySelector('.layer-solo-btn')?.classList.contains('active') || false
+      })),
+      dom: Array.from(document.querySelectorAll('#viewport svg path'))
+        .filter(p => p.id !== 'logo-silhouette-base' && p.id !== 'subject-silhouette-base')
+        .map(p => (p.style.fill || p.getAttribute('fill') || '').toUpperCase())
+    });
+
+    const before = readRowsAndDom();
+    const topHex = before.rows[0]?.hex;
+    const secondHex = before.rows[1]?.hex;
+    const topMatchesFront = topHex === before.dom[before.dom.length - 1];
+
+    // Click Down on top row -> moves down to row 1 in list and backward in DOM
+    document.querySelectorAll('#studioLayersList .layer-item')[0]?.querySelector('button[aria-label^="Send backward"]')?.click();
+    const afterDown = readRowsAndDom();
+    const downOk = afterDown.rows[1]?.hex === topHex && afterDown.rows[0]?.hex === secondHex;
+
+    // Click Up on row 1 -> moves back to row 0
+    document.querySelectorAll('#studioLayersList .layer-item')[1]?.querySelector('button[aria-label^="Bring forward"]')?.click();
+    const afterUp = readRowsAndDom();
+    const upOk = afterUp.rows[0]?.hex === topHex && afterUp.rows[1]?.hex === secondHex;
+
+    // Hide last row, Solo row 0 twice, confirm pre-solo hidden row remains hidden
+    const rowsBeforeSolo = document.querySelectorAll('#studioLayersList .layer-item');
+    const lastIdx = rowsBeforeSolo.length - 1;
+    rowsBeforeSolo[lastIdx]?.querySelector('.layer-vis-btn')?.click();
+    document.querySelectorAll('#studioLayersList .layer-item')[0]?.querySelector('.layer-solo-btn')?.click();
+    const soloOn = readRowsAndDom();
+    document.querySelectorAll('#studioLayersList .layer-item')[0]?.querySelector('.layer-solo-btn')?.click();
+    const soloOff = readRowsAndDom();
+    const soloToggleOk = soloOn.rows[0]?.soloActive && !soloOn.rows[0]?.hidden && soloOn.rows[1]?.hidden &&
+      !soloOff.rows[0]?.soloActive && !soloOff.rows[0]?.hidden && !soloOff.rows[1]?.hidden && soloOff.rows[lastIdx]?.hidden;
+
+    // Reset layers and check Refine Stroke live edit + lossless reset
+    document.getElementById('btnResetLayers')?.click();
+    const origD = Array.from(document.querySelectorAll('#viewport svg path'))
+      .filter(p => p.id !== 'logo-silhouette-base' && p.id !== 'subject-silhouette-base')
+      .map(p => p.getAttribute('d'));
+    slider.value = '40';
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+    const midD = Array.from(document.querySelectorAll('#viewport svg path'))
+      .filter(p => p.id !== 'logo-silhouette-base' && p.id !== 'subject-silhouette-base')
+      .map(p => p.getAttribute('d'));
+    document.getElementById('btnResetRefine')?.click();
+    const endD = Array.from(document.querySelectorAll('#viewport svg path'))
+      .filter(p => p.id !== 'logo-silhouette-base' && p.id !== 'subject-silhouette-base')
+      .map(p => p.getAttribute('d'));
+
+    const refineOk = midD.some((d, i) => d !== origD[i]) &&
+      midD.every(d => d && !/NaN|undefined/.test(d) && d.trim().endsWith('Z')) &&
+      endD.every((d, i) => d === origD[i]);
+
+    // Check Canva Ready <= 4 unique colors
+    document.querySelector('.tab-btn[data-artboard="canvaOptimized"]')?.click();
+    await new Promise(r => setTimeout(r, 100));
+    const canvaFills = new Set();
+    document.querySelectorAll('#viewport svg path, #viewport svg rect').forEach(el => {
+      const f = el.getAttribute('fill');
+      if (f && f !== 'none') canvaFills.add(f.toLowerCase());
+    });
+
+    return {
+      stepBadgesOk,
+      sliderUnique,
+      hasBadge,
+      sliderStepOk,
+      topMatchesFront,
+      downOk,
+      upOk,
+      soloToggleOk,
+      refineOk,
+      canvaColorCount: canvaFills.size
+    };
+  });
+
+  assert(
+    uxChecks.stepBadgesOk && uxChecks.sliderUnique && !uxChecks.hasBadge && uxChecks.sliderStepOk,
+    'Studio UI Controls: stepBadge1..6 present, single #refineStrokeSlider (step=1, no badge)'
+  );
+  assert(
+    uxChecks.topMatchesFront && uxChecks.downOk && uxChecks.upOk && uxChecks.soloToggleOk,
+    'Layer Inspector UX: Top=frontmost order, atomic ▲/▼ swaps, and stateful Solo (S) toggle restore'
+  );
+  assert(
+    uxChecks.refineOk && uxChecks.canvaColorCount <= 4,
+    `Refine Stroke & Canva Cap: Lossless live path smoothing and Canva Ready <= 4 colors (${uxChecks.canvaColorCount} colors)`
+  );
+
+  // --- SECTION 14: FABRICATION SUITE ENGINEERING (CUT STENCIL, WIREFRAME, DIE-CUT) ---
+  console.log('\n--- Section 14: Fabrication Suite Engineering (Cut Stencil, Wireframe, Die-Cut) ---');
+  const stampPath = path.join(ROOT_DIR, 'input/C = 10.png');
+  const stampBase64 = fs.existsSync(stampPath) ? fs.readFileSync(stampPath).toString('base64') : null;
+  const fabChecks = await page.evaluate(async ({ stampB64, lineB64 }) => {
+    const { generateBridgeStencilMap } = await import('/c2vector/src/js/engine/tonal-studies.js');
+    const { runLogoVectorizationPipeline } = await import('/c2vector/src/js/engine/logo-engine.js');
+    const { runVectorizationPipeline } = await import('/c2vector/src/js/engine/pipeline.js');
+
+    // 1. Cut Stencil: Bullseye test pattern (solid ring enclosing an isolated white island)
+    const w = 120, h = 120;
+    const bullseye = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dist = Math.hypot(x - 60, y - 60);
+        if (dist >= 20 && dist <= 40) bullseye[y * w + x] = 1;
+      }
+    }
+    const bridged = generateBridgeStencilMap(bullseye, w, h, { bridgeWidth: 5, margin: 4 });
+    // Count reachable 0-pixels from border
+    const reach = new Uint8Array(w * h);
+    const q = [];
+    for (let x = 0; x < w; x++) { q.push(x, (h - 1) * w + x); }
+    for (let y = 1; y < h - 1; y++) { q.push(y * w, y * w + w - 1); }
+    for (const p of q) { if (bridged[p] === 0) reach[p] = 1; }
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i], cx = c % w, cy = Math.floor(c / w);
+      for (const n of [cx > 0 ? c - 1 : -1, cx < w - 1 ? c + 1 : -1, cy > 0 ? c - w : -1, cy < h - 1 ? c + w : -1]) {
+        if (n >= 0 && !reach[n] && bridged[n] === 0) { reach[n] = 1; q.push(n); }
+      }
+    }
+    let isolatedIslandPixels = 0;
+    for (let i = 0; i < w * h; i++) {
+      if (bridged[i] === 0 && !reach[i]) isolatedIslandPixels++;
+    }
+
+    // 2. Photo & Logo Fabrication Wireframe + Die-Cut check
+    const c = document.createElement('canvas');
+    c.width = 160; c.height = 160;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 160, 160);
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(40, 40, 80, 80);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(60, 60, 40, 40);
+    const idata = ctx.getImageData(0, 0, 160, 160);
+
+    const logoRes = await runLogoVectorizationPipeline(idata.data, 160, 160, { maxColors: 8 });
+    const photoRes = await runVectorizationPipeline(idata.data, 160, 160, { tiers: 8 });
+
+    const photoWireSolid = photoRes.solidSvgs.cannyEdges;
+    const logoWireSolid = logoRes.solidSvgs.cannyEdges;
+    const logoWireTrans = logoRes.transparentSvgs.cannyEdges;
+    const logoDieSolid = logoRes.solidSvgs.chromaticEdges;
+    const photoDieSolid = photoRes.solidSvgs.chromaticEdges;
+    const photoDieTrans = photoRes.transparentSvgs.chromaticEdges;
+
+    const photoWireSinglePass = photoWireSolid.includes('id="plotter-cut-paths"') && photoWireSolid.includes('fill="none"');
+    const logoWireCount = (logoWireTrans.match(/<path\s/g) || []).length;
+    const dieCutOk = logoDieSolid.includes('id="CutContour"') &&
+      photoDieSolid.includes('id="CutContour"') &&
+      !logoDieSolid.includes('opacity="0.16"') &&
+      !photoDieSolid.includes('opacity="0.16"') &&
+      logoDieSolid.includes('id="diecut-subject-preview"') &&
+      photoDieSolid.includes('id="diecut-subject-preview"') &&
+      photoDieSolid.includes('id="registration-crop-marks"') &&
+      !photoDieTrans.includes('<rect');
+
+    // Helper: measure dark ink coverage % when rasterizing SVG at width x height
+    async function measureDarkPct(svgStr, rw, rh) {
+      const url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml' }));
+      const im = new Image();
+      await new Promise((r, j) => { im.onload = r; im.onerror = j; im.src = url; });
+      const rc = document.createElement('canvas'); rc.width = rw; rc.height = rh;
+      rc.getContext('2d').drawImage(im, 0, 0, rw, rh);
+      URL.revokeObjectURL(url);
+      const px = rc.getContext('2d').getImageData(0, 0, rw, rh).data;
+      let dark = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i + 3] >= 64 && (px[i] + px[i + 1] + px[i + 2]) / 3 < 70) dark++;
+      }
+      return (dark / (rw * rh)) * 100;
+    }
+
+    // 3. Framed scalloped stamp / dark-ground test (C = 10.png or synthetic scalloped card)
+    let stampImg;
+    if (stampB64) {
+      const im = new Image();
+      await new Promise((r, j) => { im.onload = r; im.onerror = j; im.src = 'data:image/png;base64,' + stampB64; });
+      const sc = document.createElement('canvas'); sc.width = im.naturalWidth; sc.height = im.naturalHeight;
+      sc.getContext('2d').drawImage(im, 0, 0);
+      stampImg = { data: sc.getContext('2d').getImageData(0, 0, sc.width, sc.height).data, w: sc.width, h: sc.height };
+    } else {
+      const sc = document.createElement('canvas'); sc.width = 220; sc.height = 260;
+      const sx = sc.getContext('2d');
+      sx.fillStyle = '#090a11'; sx.fillRect(14, 14, 192, 232);
+      sx.fillStyle = '#f2f4f5'; sx.beginPath(); sx.arc(110, 130, 62, 0, Math.PI * 2); sx.fill();
+      sx.fillStyle = '#103371'; sx.fillRect(85, 110, 50, 35);
+      stampImg = { data: sx.getImageData(0, 0, 220, 260).data, w: 220, h: 260 };
+    }
+
+    const stampLogo = await runLogoVectorizationPipeline(stampImg.data, stampImg.w, stampImg.h, { maxColors: 16 });
+    const stampPhoto = await runVectorizationPipeline(stampImg.data, stampImg.w, stampImg.h, { tiers: 16 });
+    const stampLogoDarkPct = await measureDarkPct(stampLogo.solidSvgs.stencil, stampImg.w, stampImg.h);
+    const stampPhotoDarkPct = await measureDarkPct(stampPhoto.solidSvgs.stencil, stampImg.w, stampImg.h);
+
+    const vbLogoMatch = stampLogo.svgs.chromaticEdges.match(/viewBox="0 0 (\d+) (\d+)"/);
+    const vbPhotoMatch = stampPhoto.svgs.chromaticEdges.match(/viewBox="0 0 (\d+) (\d+)"/);
+    const stampDieLogoPadded = Boolean(vbLogoMatch && parseInt(vbLogoMatch[1], 10) > stampImg.w);
+    const stampDiePhotoPadded = Boolean(vbPhotoMatch && parseInt(vbPhotoMatch[1], 10) > stampPhoto.dimensions.width);
+    const stampDieNoGreySlab = !stampLogo.svgs.chromaticEdges.includes('opacity="0.16"') &&
+      !stampPhoto.svgs.chromaticEdges.includes('opacity="0.16"') &&
+      (stampLogo.svgs.chromaticEdges.match(/<path\s/g) || []).length >= 5 &&
+      (stampPhoto.svgs.chromaticEdges.match(/<path\s/g) || []).length >= 5;
+
+    // 4. Transparent line-art Photo Mode stencil preservation check
+    let lineImg;
+    if (lineB64) {
+      const im = new Image();
+      await new Promise((r, j) => { im.onload = r; im.onerror = j; im.src = 'data:image/png;base64,' + lineB64; });
+      const lc = document.createElement('canvas'); lc.width = im.naturalWidth; lc.height = im.naturalHeight;
+      const lcx = lc.getContext('2d');
+      lcx.drawImage(im, 0, 0);
+      lineImg = { data: lcx.getImageData(0, 0, lc.width, lc.height).data, w: lc.width, h: lc.height };
+    } else {
+      const lc = document.createElement('canvas'); lc.width = 200; lc.height = 200;
+      const lx = lc.getContext('2d');
+      lx.strokeStyle = '#020202'; lx.lineWidth = 4;
+      for (let k = 20; k <= 180; k += 20) { lx.strokeRect(k, k, 200 - 2 * k, 200 - 2 * k); }
+      lineImg = { data: lx.getImageData(0, 0, 200, 200).data, w: 200, h: 200 };
+    }
+    const linePhoto = await runVectorizationPipeline(lineImg.data, lineImg.w, lineImg.h, { tiers: 8 });
+    const linePhotoDarkPct = await measureDarkPct(linePhoto.solidSvgs.stencil, lineImg.w, lineImg.h);
+
+    return {
+      isolatedIslandPixels,
+      photoWireSinglePass,
+      logoWireHasPlotterId: logoWireSolid.includes('id="plotter-cut-paths"'),
+      logoWireCount,
+      dieCutOk,
+      stampLogoDarkPct: +stampLogoDarkPct.toFixed(1),
+      stampPhotoDarkPct: +stampPhotoDarkPct.toFixed(1),
+      stampDieLogoPadded,
+      stampDiePhotoPadded,
+      stampDieNoGreySlab,
+      linePhotoDarkPct: +linePhotoDarkPct.toFixed(1)
+    };
+  }, { stampB64: stampBase64, lineB64: lineArtBase64 });
+
+  assert(
+    fabChecks.isolatedIslandPixels === 0,
+    `Fabrication Cut Stencil: Bullseye enclosed island 100% bridged to outer sheet (${fabChecks.isolatedIslandPixels} isolated pixels)`
+  );
+  assert(
+    fabChecks.stampLogoDarkPct >= 10 && fabChecks.stampLogoDarkPct <= 65 &&
+    fabChecks.stampPhotoDarkPct >= 10 && fabChecks.stampPhotoDarkPct <= 65 &&
+    fabChecks.linePhotoDarkPct >= 3,
+    `Fabrication Cut Stencil V2: Balanced Logo (${fabChecks.stampLogoDarkPct}%) & Photo (${fabChecks.stampPhotoDarkPct}%) cuts + line-art ink kept (${fabChecks.linePhotoDarkPct}%)`
+  );
+  assert(
+    fabChecks.photoWireSinglePass && fabChecks.logoWireHasPlotterId && fabChecks.logoWireCount >= 2,
+    `Fabrication Wireframe: Single-pass plotter toolpaths without bg/overlap (${fabChecks.logoWireCount} foreground layers)`
+  );
+  assert(
+    fabChecks.dieCutOk && fabChecks.stampDieNoGreySlab && fabChecks.stampDieLogoPadded && fabChecks.stampDiePhotoPadded,
+    'Fabrication Die-Cut V2: Padded non-clamped #CutContour, crisp artwork proof inside vinyl carrier (0 grey slabs), crop marks, and 0-<rect> transparent export verified'
+  );
 
   await browser.close();
 

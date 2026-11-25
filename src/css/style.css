@@ -44,6 +44,7 @@ body[data-theme="dark"] {
   --bg-primary: #0b0d10;
   --bg-secondary: #14171d;
   --bg-surface: #1a1e26;
+  --bg-tertiary: #1f242e;
   --bg-card: #14171d;
   --bg-card-hover: #1c2028;
   --header-bg: #101216;
@@ -73,6 +74,7 @@ body[data-theme="light"] {
   --bg-primary: #f8fafc;
   --bg-secondary: #f1f5f9;
   --bg-surface: #f1f5f9;
+  --bg-tertiary: #e2e8f0;
   --bg-card: #ffffff;
   --bg-card-hover: #f8fafc;
   --header-bg: #ffffff;
